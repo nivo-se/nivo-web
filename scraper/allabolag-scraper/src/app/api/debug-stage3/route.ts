@@ -48,11 +48,11 @@ export async function GET(request: NextRequest) {
       });
     }
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in debug endpoint:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
-      error: error.message,
-      stack: error.stack
+      error: message
     }, { status: 500 });
   }
 }

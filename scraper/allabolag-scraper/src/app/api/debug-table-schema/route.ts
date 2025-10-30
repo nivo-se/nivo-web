@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
     
     const localDb = new LocalStagingDB(jobId);
     
-    // Get table schema
-    const schema = localDb.db.prepare("PRAGMA table_info(staging_financials)").all();
+    // Get table schema via public helper
+    const schema = localDb.getTableSchema('staging_financials');
     
     return NextResponse.json({
       jobId: jobId,
@@ -23,11 +23,11 @@ export async function GET(request: NextRequest) {
       columnCount: schema.length
     });
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error checking table schema:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
-      error: error.message,
-      stack: error.stack
+      error: message
     }, { status: 500 });
   }
 }

@@ -658,6 +658,12 @@ export class LocalStagingDB {
     }));
   }
 
+  // Utility: expose limited schema info for debugging
+  getTableSchema(tableName: string) {
+    const stmt = this.db.prepare(`PRAGMA table_info(${tableName})`);
+    return stmt.all();
+  }
+
   // Cleanup
   close() {
     this.db.close();

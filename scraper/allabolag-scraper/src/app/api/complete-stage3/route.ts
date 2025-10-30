@@ -29,11 +29,12 @@ export async function POST(request: NextRequest) {
       stats: stats
     });
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error completing Stage 3:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: message
     }, { status: 500 });
   }
 }

@@ -31,21 +31,23 @@ export async function POST(request: NextRequest) {
     console.log('Starting Stage 3 financial data fetch for existing job');
     
     // Start processing in background
-    processFinancialJob(jobId, localDb).catch(async (error) => {
+    processFinancialJob(jobId, localDb).catch(async (error: unknown) => {
       console.error('Financial job failed:', error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
       localDb.updateJob(jobId, { 
         status: 'error', 
-        lastError: error.message
+        lastError: message
       });
     });
     
     return NextResponse.json({ jobId: jobId });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error starting financial job:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { 
         error: 'Failed to start financial job',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: message
       },
       { status: 500 }
     );
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
-  return withSession(async (session) => {
+  return withSession(async (session: any) => {
     const buildId = await getBuildId(session);
     const batchSize = 50;
     const concurrency = 3;
@@ -94,13 +96,13 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
     console.log(`Processing batch of ${companiesToProcess.length} companies for financial data`);
     
     // Process in chunks with controlled concurrency
-    const chunks = [];
+    const chunks: any[] = [];
     for (let i = 0; i < companiesToProcess.length; i += concurrency) {
       chunks.push(companiesToProcess.slice(i, i + concurrency));
     }
     
     for (const chunk of chunks) {
-      const promises = chunk.map(async (companyIdRecord) => {
+      const promises = chunk.map(async (companyIdRecord: any) => {
         try {
           // Get the full company data from the staging_companies table
           const companyData = localDb.getCompanyByOrgnr(jobId, companyIdRecord.orgnr);
@@ -116,7 +118,7 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
           
           if (financialData && financialData.length > 0) {
             // Store financial data in local database
-            const financialsToInsert = financialData.map(financial => ({
+            const financialsToInsert = financialData.map((financial: any) => ({
               id: `${companyIdRecord.company_id}_${financial.year}_${financial.period}`,
               companyId: companyIdRecord.company_id,
               orgnr: companyIdRecord.orgnr,
@@ -148,9 +150,10 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
             localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'no_financials');
           }
           
-        } catch (error) {
+        } catch (error: unknown) {
           console.error(`Error fetching financials for company ${companyIdRecord.company_id}:`, error);
-          localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'error', error.message);
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'error', message);
         }
       });
       
@@ -192,9 +195,10 @@ async function fetchCompanyFinancials(buildId: string, companyData: any, company
     
     console.log(`Fetched ${financialData.length} financial records for company ${companyData.companyName} (${companyData.orgnr})`);
     return financialData;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`Error fetching financial data for company ${companyData.companyName} (${companyData.orgnr}):`, error);
-    console.error('Error details:', error.message);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error details:', message);
     throw error;
   }
 }
