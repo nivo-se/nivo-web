@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { LocalStagingDB } from '@/lib/db/local-staging';
+import { handleCors, addCorsHeaders } from '@/lib/cors';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
+  // Handle CORS preflight
+  const corsResponse = handleCors(request);
+  if (corsResponse) return corsResponse;
+
   try {
     const { sessionId } = await params;
     console.log(`Fetching companies for session: ${sessionId}`);
@@ -35,7 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     
     localDb.close();
     
-    return NextResponse.json({
+    return addCorsHeaders(NextResponse.json({
       success: true,
       sessionId,
       companies: basicCompanies.map(c => ({
@@ -71,10 +76,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       summary: basicSummary,
       errors: [],
       totalErrors: 0
-    });
+    }));
     
-  } catch (error) {
-    console.error(`Error fetching companies for session ${params.sessionId}:`, error);
-    return NextResponse.json({ error: 'Failed to fetch companies' }, { status: 500 });
+  } catch (error: unknown) {
+    console.error(`Error fetching companies for session:`, error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return addCorsHeaders(NextResponse.json({ error: message }, { status: 500 }));
   }
 }

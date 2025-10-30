@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { LocalStagingDB } from '@/lib/db/local-staging';
+import { handleCors, addCorsHeaders } from '@/lib/cors';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  // Handle CORS preflight
+  const corsResponse = handleCors(request);
+  if (corsResponse) return corsResponse;
+
   try {
     const { sessionId } = await params;
     console.log(`Fetching session details for: ${sessionId}`);
@@ -30,25 +35,22 @@ export async function GET(
     const companies = localDb.getCompaniesToProcess(sessionId, 'pending');
     const allCompanies = localDb.getCompaniesToProcess(sessionId, 'completed');
     
-    // Get financial data count
-    const financialsCount = jobStats.financials;
-    
     // Determine stage status
     const stages = {
       stage1: {
-        status: jobStats.companies > 0 ? 'completed' : 'pending' as const,
+        status: jobStats.companies > 0 ? 'completed' : 'pending',
         companies: jobStats.companies,
-        completedAt: jobStats.companies > 0 ? job.updated_at : undefined
+        completedAt: jobStats.companies > 0 ? job.updatedAt : undefined
       },
       stage2: {
-        status: jobStats.companyIds > 0 ? 'completed' : (jobStats.companies > 0 ? 'pending' : 'pending') as const,
+        status: jobStats.companyIds > 0 ? 'completed' : (jobStats.companies > 0 ? 'pending' : 'pending'),
         companyIds: jobStats.companyIds,
-        completedAt: jobStats.companyIds > 0 ? job.updated_at : undefined
+        completedAt: jobStats.companyIds > 0 ? job.updatedAt : undefined
       },
       stage3: {
-        status: jobStats.financials > 0 ? 'completed' : (jobStats.companyIds > 0 ? 'pending' : 'pending') as const,
+        status: jobStats.financials > 0 ? 'completed' : (jobStats.companyIds > 0 ? 'pending' : 'pending'),
         financials: jobStats.financials,
-        completedAt: jobStats.financials > 0 ? job.updated_at : undefined
+        completedAt: jobStats.financials > 0 ? job.updatedAt : undefined
       }
     };
     
@@ -62,14 +64,13 @@ export async function GET(
     
     const sessionDetails = {
       sessionId,
-      createdAt: job.created_at,
-      updatedAt: job.updated_at,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
       status,
       stages,
       totalCompanies: jobStats.companies,
       totalCompanyIds: jobStats.companyIds,
       totalFinancials: jobStats.financials,
-      filters: job.filters ? JSON.parse(job.filters) : undefined,
       companies: allCompanies.map(company => ({
         orgnr: company.orgnr,
         companyName: company.companyName,
@@ -89,20 +90,21 @@ export async function GET(
     
     localDb.close();
     
-    return NextResponse.json({
+    return addCorsHeaders(NextResponse.json({
       success: true,
       session: sessionDetails
-    });
+    }));
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error fetching session details:', error);
-    return NextResponse.json(
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return addCorsHeaders(NextResponse.json(
       { 
         success: false,
         error: 'Failed to fetch session details',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: message
       },
       { status: 500 }
-    );
+    ));
   }
 }

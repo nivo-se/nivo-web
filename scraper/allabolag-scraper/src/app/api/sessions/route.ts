@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LocalStagingDB } from '@/lib/db/local-staging';
 import { join } from 'path';
 import { readdirSync, statSync } from 'fs';
+import { handleCors, addCorsHeaders } from '@/lib/cors';
 
 export interface SessionInfo {
   sessionId: string;
@@ -32,6 +33,10 @@ export interface SessionInfo {
 }
 
 export async function GET(request: NextRequest) {
+  // Handle CORS preflight
+  const corsResponse = handleCors(request);
+  if (corsResponse) return corsResponse;
+
   try {
     console.log('Fetching all scraping sessions...');
     
@@ -60,19 +65,19 @@ export async function GET(request: NextRequest) {
           // Determine stage status
           const stages = {
             stage1: {
-              status: jobStats.companies > 0 ? 'completed' : 'pending' as const,
+              status: jobStats.companies > 0 ? 'completed' : 'pending',
               companies: jobStats.companies,
-              completedAt: jobStats.companies > 0 ? job.updated_at : undefined
+              completedAt: jobStats.companies > 0 ? job.updatedAt : undefined
             },
             stage2: {
-              status: jobStats.companyIds > 0 ? 'completed' : (jobStats.companies > 0 ? 'pending' : 'pending') as const,
+              status: jobStats.companyIds > 0 ? 'completed' : (jobStats.companies > 0 ? 'pending' : 'pending'),
               companyIds: jobStats.companyIds,
-              completedAt: jobStats.companyIds > 0 ? job.updated_at : undefined
+              completedAt: jobStats.companyIds > 0 ? job.updatedAt : undefined
             },
             stage3: {
-              status: jobStats.financials > 0 ? 'completed' : (jobStats.companyIds > 0 ? 'pending' : 'pending') as const,
+              status: jobStats.financials > 0 ? 'completed' : (jobStats.companyIds > 0 ? 'pending' : 'pending'),
               financials: jobStats.financials,
-              completedAt: jobStats.financials > 0 ? job.updated_at : undefined
+              completedAt: jobStats.financials > 0 ? job.updatedAt : undefined
             }
           };
           
@@ -86,14 +91,14 @@ export async function GET(request: NextRequest) {
           
           const session: SessionInfo = {
             sessionId,
-            createdAt: job.created_at,
-            updatedAt: job.updated_at,
+            createdAt: job.createdAt,
+            updatedAt: job.updatedAt,
             status,
             stages,
             totalCompanies: jobStats.companies,
             totalCompanyIds: jobStats.companyIds,
             totalFinancials: jobStats.financials,
-            filters: job.filters ? JSON.parse(job.filters) : undefined
+            filters: undefined
           };
           
           sessions.push(session);
@@ -108,31 +113,31 @@ export async function GET(request: NextRequest) {
       // Sort by creation date (newest first)
       sessions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
-      return NextResponse.json({
+      return addCorsHeaders(NextResponse.json({
         success: true,
         sessions,
         total: sessions.length
-      });
+      }));
       
     } catch (error) {
       console.error('Error reading staging directory:', error);
-      return NextResponse.json({
+      return addCorsHeaders(NextResponse.json({
         success: false,
         error: 'Failed to read staging directory',
         sessions: [],
         total: 0
-      });
+      }));
     }
     
   } catch (error) {
     console.error('Error fetching sessions:', error);
-    return NextResponse.json(
+    return addCorsHeaders(NextResponse.json(
       { 
         success: false,
         error: 'Failed to fetch sessions',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
-    );
+    ));
   }
 }
