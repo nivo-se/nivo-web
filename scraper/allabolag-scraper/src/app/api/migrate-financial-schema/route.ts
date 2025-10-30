@@ -27,21 +27,19 @@ export async function POST(request: NextRequest) {
     
     for (const column of columnsToAdd) {
       try {
-        const [columnName] = column.split(' ');
-        localDb.db.prepare(`ALTER TABLE staging_financials ADD COLUMN ${column}`).run();
-        console.log(`Added column: ${columnName}`);
-        addedColumns++;
-      } catch (error) {
-        if (error.message.includes('duplicate column name')) {
-          console.log(`Column already exists: ${column.split(' ')[0]}`);
-        } else {
-          console.error(`Error adding column ${column}:`, error.message);
+        const added = localDb.addColumnIfMissing('staging_financials', column);
+        if (added) {
+          console.log(`Added column: ${column.split(' ')[0]}`);
+          addedColumns++;
         }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`Error adding column ${column}:`, message);
       }
     }
     
     // Check final schema
-    const finalSchema = localDb.db.prepare("PRAGMA table_info(staging_financials)").all();
+    const finalSchema = localDb.getTableSchema('staging_financials');
     
     return NextResponse.json({
       success: true,
@@ -50,12 +48,12 @@ export async function POST(request: NextRequest) {
       addedColumns: addedColumns
     });
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in migration:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
       success: false,
-      error: error.message,
-      stack: error.stack
+      error: message
     }, { status: 500 });
   }
 }

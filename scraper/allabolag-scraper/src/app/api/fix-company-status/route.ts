@@ -28,10 +28,11 @@ export async function POST(request: NextRequest) {
       updatedCount: updatedCount
     });
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error fixing company ID statuses:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
-      error: error.message
+      error: message
     }, { status: 500 });
   }
 }

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LocalStagingDB } from '@/lib/db/local-staging';
 import { handleCors, addCorsHeaders } from '@/lib/cors';
 
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   // Handle CORS preflight
   const corsResponse = handleCors(request);
@@ -83,4 +85,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const message = error instanceof Error ? error.message : 'Unknown error';
     return addCorsHeaders(NextResponse.json({ error: message }, { status: 500 }));
   }
+}
+
+export function OPTIONS(request: NextRequest) {
+  // Explicit OPTIONS handler for CORS preflight
+  return handleCors(request) || addCorsHeaders(new NextResponse(null, { status: 204 }));
 }

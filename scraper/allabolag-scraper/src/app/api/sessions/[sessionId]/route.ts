@@ -38,17 +38,17 @@ export async function GET(
     // Determine stage status
     const stages = {
       stage1: {
-        status: jobStats.companies > 0 ? 'completed' : 'pending',
+        status: (jobStats.companies > 0 ? 'completed' : 'pending') as 'pending' | 'running' | 'completed' | 'error',
         companies: jobStats.companies,
         completedAt: jobStats.companies > 0 ? job.updatedAt : undefined
       },
       stage2: {
-        status: jobStats.companyIds > 0 ? 'completed' : (jobStats.companies > 0 ? 'pending' : 'pending'),
+        status: (jobStats.companyIds > 0 ? 'completed' : (jobStats.companies > 0 ? 'pending' : 'pending')) as 'pending' | 'running' | 'completed' | 'error',
         companyIds: jobStats.companyIds,
         completedAt: jobStats.companyIds > 0 ? job.updatedAt : undefined
       },
       stage3: {
-        status: jobStats.financials > 0 ? 'completed' : (jobStats.companyIds > 0 ? 'pending' : 'pending'),
+        status: (jobStats.financials > 0 ? 'completed' : (jobStats.companyIds > 0 ? 'pending' : 'pending')) as 'pending' | 'running' | 'completed' | 'error',
         financials: jobStats.financials,
         completedAt: jobStats.financials > 0 ? job.updatedAt : undefined
       }

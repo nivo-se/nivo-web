@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { LocalStagingDB } from '@/lib/db/local-staging';
+import { LocalStagingDB, StagingCompany } from '@/lib/db/local-staging';
 import { filterHash } from '@/lib/hash';
 import { getBuildId, fetchSegmentationPage, normalizeCompany, getAllabolagSession, withSession } from '@/lib/allabolag';
 
@@ -166,7 +166,7 @@ async function processSegmentationJob(jobId: string, params: any, localDb: Local
         
         // Insert companies in batch
         if (companiesToInsert.length > 0) {
-          localDb.insertCompanies(companiesToInsert);
+          localDb.insertCompanies(companiesToInsert as StagingCompany[]);
         }
       }
       

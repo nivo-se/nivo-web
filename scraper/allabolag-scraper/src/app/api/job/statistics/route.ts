@@ -26,18 +26,17 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Get detailed statistics
+    // Basic statistics available from LocalStagingDB
     const stats = localDb.getJobStats(jobId);
     
-    // Get companies with different statuses
+    // Companies by status (derived from companies table)
     const companiesByStatus = {
       pending: localDb.getCompaniesToProcess(jobId, 'pending').length,
       id_resolved: localDb.getCompaniesToProcess(jobId, 'id_resolved').length,
-      id_not_found: localDb.getCompaniesToProcess(jobId, 'id_not_found').length,
       error: localDb.getCompaniesToProcess(jobId, 'error').length,
     };
     
-    // Get company IDs statistics
+    // Company IDs statistics
     const companyIdsByStatus = {
       pending: localDb.getCompanyIdsToProcess(jobId, 'pending').length,
       financials_fetched: localDb.getCompanyIdsToProcess(jobId, 'financials_fetched').length,
@@ -45,54 +44,43 @@ export async function GET(request: NextRequest) {
       error: localDb.getCompanyIdsToProcess(jobId, 'error').length,
     };
     
-    // Get financial data statistics
-    const financialsToValidate = localDb.getFinancialsToValidate(jobId);
-    const validFinancials = localDb.getValidFinancials(jobId, false);
-    const financialsWithWarnings = localDb.getValidFinancials(jobId, true);
-    
     return NextResponse.json({
       job: {
         id: job.id,
-        jobType: job.job_type,
+        jobType: job.jobType,
         status: job.status,
         stage: job.stage,
-        lastPage: job.last_page,
-        processedCount: job.processed_count,
-        totalCompanies: job.total_companies,
-        errorCount: job.error_count,
-        lastError: job.last_error,
-        migrationStatus: job.migration_status,
-        createdAt: job.created_at,
-        updatedAt: job.updated_at,
+        lastPage: job.lastPage ?? 0,
+        processedCount: job.processedCount ?? 0,
+        totalCompanies: job.totalCompanies ?? 0,
+        errorCount: job.errorCount ?? 0,
+        lastError: job.lastError,
+        migrationStatus: job.migrationStatus,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
       },
       statistics: {
+        totals: {
+          companies: stats.companies,
+          companyIds: stats.companyIds,
+          financials: stats.financials
+        },
         companies: {
-          total: stats.companies.total,
-          withIds: stats.companies.with_ids,
-          errors: stats.companies.errors,
           byStatus: companiesByStatus
         },
         companyIds: {
           total: Object.values(companyIdsByStatus).reduce((a, b) => a + b, 0),
           byStatus: companyIdsByStatus
-        },
-        financials: {
-          total: stats.financials.total,
-          valid: stats.financials.valid,
-          warnings: stats.financials.warnings,
-          invalid: stats.financials.invalid,
-          pendingValidation: financialsToValidate.length,
-          validRecords: validFinancials.length,
-          recordsWithWarnings: financialsWithWarnings.length
         }
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error fetching job statistics:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { 
         error: 'Failed to fetch job statistics',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: message
       },
       { status: 500 }
     );

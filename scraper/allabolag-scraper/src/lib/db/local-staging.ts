@@ -664,6 +664,15 @@ export class LocalStagingDB {
     return stmt.all();
   }
 
+  addColumnIfMissing(tableName: string, columnDef: string) {
+    const [columnName] = columnDef.split(' ');
+    const schema = this.getTableSchema(tableName) as Array<{ name: string }>;
+    const exists = schema.some(col => col.name === columnName);
+    if (exists) return false;
+    this.db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnDef}`).run();
+    return true;
+  }
+
   // Cleanup
   close() {
     this.db.close();

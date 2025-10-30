@@ -17,12 +17,9 @@ export async function GET(request: NextRequest) {
     
     // Use the local database to get job status
     const localDb = new LocalStagingDB(jobId);
-    let job = localDb.getJob(jobId);
+    const job = localDb.getJob(jobId);
     
-    // If job not found, it might be an enrichment job stored in the source job's database
     if (!job) {
-      // Try to find the job in other databases by checking if it's an enrichment job
-      // For now, we'll return an error, but this could be enhanced to search across databases
       return NextResponse.json(
         { error: 'Job not found' },
         { status: 404 }
@@ -34,25 +31,26 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json({
       id: job.id,
-      jobType: job.job_type,
+      jobType: job.jobType,
       status: job.status,
       stage: job.stage,
-      lastPage: job.last_page,
-      processedCount: job.processed_count,
-      totalCompanies: job.total_companies,
-      errorCount: job.error_count,
-      lastError: job.last_error,
-      migrationStatus: job.migration_status,
-      createdAt: job.created_at,
-      updatedAt: job.updated_at,
+      lastPage: job.lastPage ?? 0,
+      processedCount: job.processedCount ?? 0,
+      totalCompanies: job.totalCompanies ?? 0,
+      errorCount: job.errorCount ?? 0,
+      lastError: job.lastError,
+      migrationStatus: job.migrationStatus,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
       stats: stats
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error fetching job status:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { 
         error: 'Failed to fetch job status',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: message
       },
       { status: 500 }
     );
