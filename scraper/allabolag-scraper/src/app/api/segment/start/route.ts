@@ -19,7 +19,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('Request body:', body);
     
-    const params = StartSegmentationSchema.parse(body);
+    // Convert null to undefined for optional fields
+    const normalizedBody = {
+      ...body,
+      profitFrom: body.profitFrom ?? undefined,
+      profitTo: body.profitTo ?? undefined,
+    };
+    
+    const params = StartSegmentationSchema.parse(normalizedBody);
     console.log('Parsed params:', params);
     
     // Convert millions SEK to thousands SEK for Allabolag.se API
