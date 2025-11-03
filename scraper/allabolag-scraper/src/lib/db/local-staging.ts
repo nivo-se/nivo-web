@@ -728,6 +728,38 @@ export class LocalStagingDB {
         // If parsing fails, use empty object
       }
       
+      // Extract account codes from raw_data structure
+      // The raw_data can be in different formats:
+      // 1. Direct account codes (sdi, dr, etc.) - already extracted
+      // 2. Complete JSON response with pageProps.company.companyAccounts
+      // 3. Report structure with accounts array
+      
+      let accountCodes: Record<string, number | null> = {};
+      
+      // Try to extract from pageProps structure (complete JSON response)
+      if (parsedRawData.pageProps?.company?.companyAccounts) {
+        const companyAccounts = parsedRawData.pageProps.company.companyAccounts;
+        // Find the report matching this year and period
+        const matchingReport = companyAccounts.find((r: any) => 
+          r.year === row.year && (r.period === row.period || r.period === row.period?.split('-')[0])
+        );
+        if (matchingReport?.accounts) {
+          for (const account of matchingReport.accounts) {
+            if (account.code && account.amount !== null && account.amount !== undefined) {
+              const amount = parseFloat(account.amount);
+              if (!isNaN(amount)) {
+                accountCodes[account.code] = amount;
+              }
+            }
+          }
+        }
+      }
+      
+      // Try to extract from direct account codes (if stored at top level)
+      if (parsedRawData.sdi !== undefined || parsedRawData.dr !== undefined) {
+        accountCodes = { ...parsedRawData };
+      }
+      
       // Extract ALL account codes from raw_data (50+ metrics)
       return {
         year: row.year,
@@ -740,46 +772,48 @@ export class LocalStagingDB {
         employees: row.employees,
         be: row.be,
         tr: row.tr,
-        // Core financial metrics
-        sdi: parsedRawData.sdi || null,  // Revenue
-        dr: parsedRawData.dr || null,    // Net profit
-        ors: parsedRawData.ors || null,  // EBITDA
-        rg: parsedRawData.rg || null,    // Operating Income (EBIT)
-        ek: parsedRawData.ek || null,    // Equity
-        fk: parsedRawData.fk || null,    // Debt
+        // Core financial metrics (from accountCodes or parsedRawData)
+        sdi: accountCodes['SDI'] || parsedRawData.sdi || null,  // Revenue
+        dr: accountCodes['DR'] || parsedRawData.dr || null,    // Net profit
+        ors: accountCodes['ORS'] || parsedRawData.ors || null,  // EBITDA
+        rg: accountCodes['RG'] || parsedRawData.rg || null,    // Operating Income (EBIT)
+        ek: accountCodes['EK'] || parsedRawData.ek || null,    // Equity
+        fk: accountCodes['FK'] || parsedRawData.fk || null,    // Debt
         // Additional account codes (50+ metrics)
-        adi: parsedRawData.adi || null,
-        adk: parsedRawData.adk || null,
-        adr: parsedRawData.adr || null,
-        ak: parsedRawData.ak || null,
-        ant: parsedRawData.ant || null,
-        fi: parsedRawData.fi || null,
-        gg: parsedRawData.gg || null,
-        kbp: parsedRawData.kbp || null,
-        lg: parsedRawData.lg || null,
-        sap: parsedRawData.sap || null,
-        sed: parsedRawData.sed || null,
-        si: parsedRawData.si || null,
-        sek: parsedRawData.sek || null,
-        sf: parsedRawData.sf || null,
-        sfa: parsedRawData.sfa || null,
-        sge: parsedRawData.sge || null,
-        sia: parsedRawData.sia || null,
-        sik: parsedRawData.sik || null,
-        skg: parsedRawData.skg || null,
-        skgki: parsedRawData.skgki || null,
-        sko: parsedRawData.sko || null,
-        slg: parsedRawData.slg || null,
-        som: parsedRawData.som || null,
-        sub: parsedRawData.sub || null,
-        sv: parsedRawData.sv || null,
-        svd: parsedRawData.svd || null,
-        utr: parsedRawData.utr || null,
-        fsd: parsedRawData.fsd || null,
-        kb: parsedRawData.kb || null,
-        awa: parsedRawData.awa || null,
-        iac: parsedRawData.iac || null,
-        min: parsedRawData.min || null,
+        adi: accountCodes['ADI'] || parsedRawData.adi || null,
+        adk: accountCodes['ADK'] || parsedRawData.adk || null,
+        adr: accountCodes['ADR'] || parsedRawData.adr || null,
+        ak: accountCodes['AK'] || parsedRawData.ak || null,
+        ant: accountCodes['ANT'] || parsedRawData.ant || null,
+        fi: accountCodes['FI'] || parsedRawData.fi || null,
+        gg: accountCodes['GG'] || parsedRawData.gg || null,
+        kbp: accountCodes['KBP'] || parsedRawData.kbp || null,
+        lg: accountCodes['LG'] || parsedRawData.lg || null,
+        sap: accountCodes['SAP'] || parsedRawData.sap || null,
+        sed: accountCodes['SED'] || parsedRawData.sed || null,
+        si: accountCodes['SI'] || parsedRawData.si || null,
+        sek: accountCodes['SEK'] || parsedRawData.sek || null,
+        sf: accountCodes['SF'] || parsedRawData.sf || null,
+        sfa: accountCodes['SFA'] || parsedRawData.sfa || null,
+        sge: accountCodes['SGE'] || parsedRawData.sge || null,
+        sia: accountCodes['SIA'] || parsedRawData.sia || null,
+        sik: accountCodes['SIK'] || parsedRawData.sik || null,
+        skg: accountCodes['SKG'] || parsedRawData.skg || null,
+        skgki: accountCodes['SKGKI'] || parsedRawData.skgki || null,
+        sko: accountCodes['SKO'] || parsedRawData.sko || null,
+        slg: accountCodes['SLG'] || parsedRawData.slg || null,
+        som: accountCodes['SOM'] || parsedRawData.som || null,
+        sub: accountCodes['SUB'] || parsedRawData.sub || null,
+        sv: accountCodes['SV'] || parsedRawData.sv || null,
+        svd: accountCodes['SVD'] || parsedRawData.svd || null,
+        utr: accountCodes['UTR'] || parsedRawData.utr || null,
+        fsd: accountCodes['FSD'] || parsedRawData.fsd || null,
+        kb: accountCodes['KB'] || parsedRawData.kb || null,
+        awa: accountCodes['AWA'] || parsedRawData.awa || null,
+        iac: accountCodes['IAC'] || parsedRawData.iac || null,
+        min: accountCodes['MIN'] || parsedRawData.min || null,
+        // Include all account codes as a map for easy access
+        allAccountCodes: accountCodes,
         // Complete raw data for reference
         rawData: parsedRawData
       };
