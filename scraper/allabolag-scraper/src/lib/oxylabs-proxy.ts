@@ -116,19 +116,12 @@ export class OxylabsProxy {
 
       // Make request through proxy
       // Node.js native fetch() doesn't support 'agent' property
-      // Use undici's fetch with dispatcher for proxy support
-      const { fetch: undiciFetch, Agent: UndiciAgent } = await import('undici');
+      // Use node-fetch v2 which properly supports HttpsProxyAgent
+      const fetch = (await import('node-fetch')).default;
       
-      // Create undici dispatcher with proxy URL
-      const dispatcher = new UndiciAgent({
-        connect: {
-          proxy: this.proxyUrl,
-        }
-      });
-      
-      const response = await undiciFetch(url, {
+      const response = await fetch(url, {
         ...options,
-        dispatcher: dispatcher,
+        agent: this.proxyAgent,
         headers: headers
       });
 
