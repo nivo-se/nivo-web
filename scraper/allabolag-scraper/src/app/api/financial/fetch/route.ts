@@ -59,123 +59,210 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
     const buildId = await getBuildId(session);
     const batchSize = 50;
     const concurrency = 3;
-    let processedCount = 0;
+    let totalProcessed = 0;
+    let iterationCount = 0;
+    const maxIterations = 1000; // Safety limit to prevent infinite loops
     
     console.log(`Starting Stage 3 financial data fetch for job ${jobId} with buildId: ${buildId}`);
   
-  while (true) {
-    // Get batch of companies with resolved company IDs
-    // Try different statuses that might exist
-    let companyIds = localDb.getCompanyIdsToProcess(jobId, 'pending');
-    
-    if (companyIds.length === 0) {
-      companyIds = localDb.getCompanyIdsToProcess(jobId, 'resolved');
-    }
-    
-    if (companyIds.length === 0) {
-      // Also try companies marked as "no_financials" since they might actually have data
-      companyIds = localDb.getCompanyIdsToProcess(jobId, 'no_financials');
-    }
-    
-    if (companyIds.length === 0) {
-      // If no company IDs found with specific status, get all company IDs
-      const allCompanyIds = localDb.getCompanyIds(jobId);
-      if (allCompanyIds.length === 0) {
-        console.log('No company IDs found for financial data processing');
+    while (iterationCount < maxIterations) {
+      iterationCount++;
+      
+      // Check if job has been stopped or paused
+      const jobStatus = localDb.getJob(jobId);
+      if (jobStatus && (jobStatus.status === 'stopped' || jobStatus.status === 'paused')) {
+        console.log(`Job ${jobId} is ${jobStatus.status}, stopping financial fetch`);
         break;
       }
-      companyIds = allCompanyIds;
-    }
-    
-    if (companyIds.length === 0) {
-      console.log('No more company IDs to process for financial data');
-      break;
-    }
-    
-    const companiesToProcess = companyIds.slice(0, batchSize);
-    console.log(`Processing batch of ${companiesToProcess.length} companies for financial data`);
-    
-    // Process in chunks with controlled concurrency
-    const chunks: any[] = [];
-    for (let i = 0; i < companiesToProcess.length; i += concurrency) {
-      chunks.push(companiesToProcess.slice(i, i + concurrency));
-    }
-    
-    for (const chunk of chunks) {
-      const promises = chunk.map(async (companyIdRecord: any) => {
-        try {
-          // Get the full company data from the staging_companies table
-          const companyData = localDb.getCompanyByOrgnr(jobId, companyIdRecord.orgnr);
-          
-          if (!companyData) {
-            console.log(`No company data found for orgnr ${companyIdRecord.orgnr}`);
-            localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'no_company_data');
-            return;
+      
+      // Get batch of companies with resolved company IDs that haven't been processed yet
+      // Only process companies that are pending or resolved (not already processed)
+      let companyIds = localDb.getCompanyIdsToProcess(jobId, 'pending');
+      
+      if (companyIds.length === 0) {
+        companyIds = localDb.getCompanyIdsToProcess(jobId, 'resolved');
+      }
+      
+      // If no pending/resolved companies, check for companies marked as 'error' or 'no_financials'
+      // that need to be retried (could have been marked incorrectly due to previous bugs)
+      if (companyIds.length === 0) {
+        const stats = localDb.getJobStats(jobId);
+        
+        // Get all company IDs to check their statuses
+        const allCompanyIds = localDb.getCompanyIds(jobId);
+        console.log(`No pending/resolved companies found. Checking status of ${allCompanyIds.length} total company IDs...`);
+        
+        // Check status distribution
+        const statusCounts: Record<string, number> = {};
+        allCompanyIds.forEach((cid: any) => {
+          const status = cid.status || 'unknown';
+          statusCounts[status] = (statusCounts[status] || 0) + 1;
+        });
+        console.log(`Company ID status distribution:`, statusCounts);
+        
+        // Retry companies with error or no_financials status
+        // Even if we have some financials, companies marked as 'error' should be retried
+        // This fixes cases where schema errors prevented data from being saved
+        const errorIds = localDb.getCompanyIdsToProcess(jobId, 'error');
+        const noFinancialsIds = localDb.getCompanyIdsToProcess(jobId, 'no_financials');
+        console.log(`Found ${errorIds.length} companies marked as 'error' and ${noFinancialsIds.length} as 'no_financials'`);
+        
+        const allRetryIds = [...errorIds, ...noFinancialsIds];
+        if (allRetryIds.length > 0) {
+          console.log(`Retrying ${allRetryIds.length} companies with error/no_financials status (${errorIds.length} errors, ${noFinancialsIds.length} no_financials)`);
+          // Reset their status to 'resolved' so they can be retried
+          const idsToRetry = allRetryIds.slice(0, batchSize);
+          for (const cid of idsToRetry) {
+            localDb.updateCompanyIdStatus(jobId, cid.orgnr, 'resolved', undefined);
+            console.log(`Reset company ${cid.orgnr} status from '${cid.status}' to 'resolved' for retry`);
           }
-          
-          // Fetch financial data for this company
-          const financialData = await fetchCompanyFinancials(buildId, companyData, companyIdRecord.company_id, session);
-          
-          if (financialData && financialData.length > 0) {
-            // Store financial data in local database
-            const financialsToInsert = financialData.map((financial: any) => ({
-              id: `${companyIdRecord.company_id}_${financial.year}_${financial.period}`,
-              companyId: companyIdRecord.company_id,
-              orgnr: companyIdRecord.orgnr,
-              year: financial.year,
-              period: financial.period,
-              periodStart: financial.periodStart,
-              periodEnd: financial.periodEnd,
-              currency: financial.currency || 'SEK',
-              revenue: financial.revenue,
-              profit: financial.profit,
-              employees: financial.employees,
-              be: financial.be,
-              tr: financial.tr,
-              rawData: financial.rawData,
-              validationStatus: 'pending',
-              scrapedAt: new Date().toISOString(),
-              jobId: jobId,
-              updatedAt: new Date().toISOString()
-            }));
-            
-            localDb.insertFinancials(financialsToInsert);
-            
-            // Update company ID status
-            localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'financials_fetched');
-            
-            console.log(`Fetched ${financialData.length} financial records for company ${companyIdRecord.company_id}`);
-          } else {
-            console.log(`No financial data found for company ${companyIdRecord.company_id}`);
-            localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'no_financials');
+          companyIds = idsToRetry;
+        } else {
+          // All companies might have status 'resolved' - try fetching them anyway
+          const resolvedIds = allCompanyIds.filter((cid: any) => cid.status === 'resolved' || !cid.status);
+          if (resolvedIds.length > 0) {
+            console.log(`No error/no_financials companies found, but ${resolvedIds.length} companies have status 'resolved'. Processing them.`);
+            companyIds = resolvedIds.slice(0, batchSize);
           }
-          
-        } catch (error: unknown) {
-          console.error(`Error fetching financials for company ${companyIdRecord.company_id}:`, error);
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'error', message);
         }
-      });
+      }
       
-      await Promise.all(promises);
-      processedCount += chunk.length;
+      // If still no companies to process, check if all are truly done
+      if (companyIds.length === 0) {
+        const allCompanyIds = localDb.getCompanyIds(jobId);
+        const stats = localDb.getJobStats(jobId);
+        
+        if (allCompanyIds.length === 0) {
+          console.log('No company IDs found for financial data processing');
+          break;
+        }
+        
+        // Only consider done if we have financials OR all companies have been fetched successfully
+        const financialsFetchedCount = allCompanyIds.filter((cid: any) => 
+          cid.status === 'financials_fetched'
+        ).length;
+        
+        if (stats.financials > 0 || financialsFetchedCount >= allCompanyIds.length) {
+          console.log(`Financial data processing complete. Companies: ${stats.companies}, Financials: ${stats.financials}, Fetched: ${financialsFetchedCount}`);
+          break;
+        }
+        
+        // If no financials and not all fetched, something is wrong - break to avoid infinite loop
+        console.log(`No pending company IDs and no financials found. Total: ${allCompanyIds.length}, Financials: ${stats.financials}`);
+        break;
+      }
       
-      // Update job progress
-      localDb.updateJob(jobId, {
-        processedCount: processedCount
-      });
+      const companiesToProcess = companyIds.slice(0, batchSize);
+      console.log(`Processing batch of ${companiesToProcess.length} companies for financial data (iteration ${iterationCount})`);
       
-      // Small delay between chunks
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Process in chunks with controlled concurrency
+      const chunks: any[] = [];
+      for (let i = 0; i < companiesToProcess.length; i += concurrency) {
+        chunks.push(companiesToProcess.slice(i, i + concurrency));
+      }
+      
+      for (const chunk of chunks) {
+        const promises = chunk.map(async (companyIdRecord: any) => {
+          try {
+            // Get the full company data from the staging_companies table
+            const companyData = localDb.getCompanyByOrgnr(jobId, companyIdRecord.orgnr);
+            
+            if (!companyData) {
+              console.log(`No company data found for orgnr ${companyIdRecord.orgnr}`);
+              localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'no_company_data');
+              return { processed: true, financialsCount: 0 };
+            }
+            
+            // Fetch financial data for this company
+            const financialData = await fetchCompanyFinancials(buildId, companyData, companyIdRecord.company_id, session);
+            
+            if (financialData && financialData.length > 0) {
+              // Store financial data in local database
+              // Map account codes to expected fields: sdi -> revenue, dr -> profit
+              const financialsToInsert = financialData.map((financial: any) => ({
+                id: `${companyIdRecord.company_id}_${financial.year}_${financial.period}`,
+                companyId: companyIdRecord.company_id,
+                orgnr: companyIdRecord.orgnr,
+                year: financial.year,
+                period: financial.period,
+                periodStart: financial.periodStart,
+                periodEnd: financial.periodEnd,
+                currency: financial.currency || 'SEK',
+                revenue: financial.sdi || financial.revenue || null, // SDI is revenue
+                profit: financial.dr || financial.profit || null,   // DR is net profit
+                employees: financial.additionalCompanyData?.employees || financial.employees || null,
+                be: financial.be || null,
+                tr: financial.tr || null,
+                // Store additional account codes in rawData for full record
+                rawData: JSON.stringify({
+                  ...(financial.rawData || financial.completeRawData || {}),
+                  // Include all account codes for reference
+                  ors: financial.ors || null, // EBITDA
+                  rg: financial.rg || null,    // Operating Income (EBIT)
+                  ek: financial.ek || null,   // Equity
+                  fk: financial.fk || null,     // Debt
+                  sdi: financial.sdi || null,  // Revenue (also in revenue field)
+                  dr: financial.dr || null     // Net profit (also in profit field)
+                }),
+                validationStatus: 'pending',
+                scrapedAt: new Date().toISOString(),
+                jobId: jobId,
+                updatedAt: new Date().toISOString()
+              }));
+              
+              localDb.insertFinancials(financialsToInsert);
+              
+              // Update company ID status
+              localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'financials_fetched');
+              
+              console.log(`Fetched ${financialData.length} financial records for company ${companyIdRecord.company_id}`);
+              return { processed: true, financialsCount: financialData.length };
+            } else {
+              console.log(`No financial data found for company ${companyIdRecord.company_id}`);
+              localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'no_financials');
+              return { processed: true, financialsCount: 0 };
+            }
+            
+          } catch (error: unknown) {
+            console.error(`Error fetching financials for company ${companyIdRecord.company_id}:`, error);
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'error', message);
+            return { processed: true, financialsCount: 0 };
+          }
+        });
+        
+        const results = await Promise.all(promises);
+        const chunkProcessed = results.filter(r => r?.processed).length;
+        totalProcessed += chunkProcessed;
+        
+        // Update job progress more frequently
+        const stats = localDb.getJobStats(jobId);
+        localDb.updateJob(jobId, {
+          processedCount: totalProcessed,
+          updatedAt: new Date().toISOString()
+        });
+        
+        console.log(`Processed ${chunkProcessed} companies, total: ${totalProcessed}, financials: ${stats.financials}`);
+        
+        // Small delay between chunks
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      // Update stats after each batch
+      const stats = localDb.getJobStats(jobId);
+      console.log(`Progress update: ${stats.companies} companies, ${stats.companyIds} company IDs, ${stats.financials} financial records`);
     }
-  }
+    
+    // Mark job as done
+    const finalStats = localDb.getJobStats(jobId);
+    localDb.updateJob(jobId, { 
+      status: 'done',
+      stage: 'stage3_financials',
+      processedCount: totalProcessed,
+      updatedAt: new Date().toISOString()
+    });
   
-  // Mark job as done
-  localDb.updateJob(jobId, { 
-    status: 'done'
-  });
-  
-  console.log(`Stage 3 financial data fetch for job ${jobId} completed, processed ${processedCount} companies`);
+    console.log(`Stage 3 financial data fetch for job ${jobId} completed. Processed ${totalProcessed} companies, ${finalStats.financials} financial records`);
   });
 }
 
@@ -183,15 +270,17 @@ async function fetchCompanyFinancials(buildId: string, companyData: any, company
   try {
     console.log(`Fetching financial data for company ${companyData.companyName} (${companyData.orgnr}) - Company ID: ${companyId}`);
     
-    // Add the companyId to the companyData
+    // Add the companyId to the companyData for fetchFinancialData
     const enrichedCompanyData = {
       ...companyData,
-      companyId: companyId
+      companyId: companyId,
+      company_name: companyData.companyName || companyData.company_name,
+      segment_name: companyData.segmentName || companyData.segment_name || companyData.naceCategories?.[0] || ''
     };
     
     // Use the real fetchFinancialData function from allabolag.ts
     const { fetchFinancialData } = await import('@/lib/allabolag');
-    const financialData = await fetchFinancialData(buildId, companyId, session, companyData.companyName, companyData.naceCategories);
+    const financialData = await fetchFinancialData(buildId, enrichedCompanyData, session);
     
     console.log(`Fetched ${financialData.length} financial records for company ${companyData.companyName} (${companyData.orgnr})`);
     return financialData;

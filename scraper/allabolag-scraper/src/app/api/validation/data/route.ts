@@ -65,9 +65,9 @@ export async function GET(request: NextRequest) {
     // Calculate year range from financial data
     let yearRange = { min: null, max: null };
     try {
-      const financialYears = localDb.getFinancialYears(jobId);
+      const financialYears = localDb.getFinancialYearsForJob(jobId);
       if (financialYears && financialYears.length > 0) {
-        const years = financialYears.map(y => y.year).filter(y => y);
+        const years = financialYears.map(y => y.year).filter(y => y && !isNaN(y));
         if (years.length > 0) {
           yearRange = {
             min: Math.min(...years),

@@ -56,10 +56,41 @@ export default function SessionModal({ isOpen, onClose, onSessionSelect }: Sessi
       if (isNaN(date.getTime())) {
         return 'Unknown date';
       }
-      return date.toLocaleString('sv-SE');
+      // Format: "Nov 3, 2025 14:30"
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     } catch (error) {
       return 'Unknown date';
     }
+  };
+
+  const formatSearchParams = (filters: any) => {
+    if (!filters) return 'No search parameters';
+    
+    const params: string[] = [];
+    
+    if (filters.revenueFrom || filters.revenueTo) {
+      const from = filters.revenueFrom ? `${filters.revenueFrom}M` : 'any';
+      const to = filters.revenueTo ? `${filters.revenueTo}M` : 'any';
+      params.push(`Revenue: ${from} - ${to} SEK`);
+    }
+    
+    if (filters.profitFrom || filters.profitTo) {
+      const from = filters.profitFrom ? `${filters.profitFrom}M` : 'any';
+      const to = filters.profitTo ? `${filters.profitTo}M` : 'any';
+      params.push(`Profit: ${from} - ${to} SEK`);
+    }
+    
+    if (filters.companyType) {
+      params.push(`Type: ${filters.companyType}`);
+    }
+    
+    return params.length > 0 ? params.join(' • ') : 'No search parameters';
   };
 
   const getStatusBadge = (status: string) => {
@@ -179,61 +210,64 @@ export default function SessionModal({ isOpen, onClose, onSessionSelect }: Sessi
                           )}
                         </div>
                         <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">
-                            Session {session.sessionId.slice(0, 8)}...
-                          </h3>
-                          <p className="text-sm text-gray-600">
+                          <h3 className="font-medium text-gray-900 mb-1">
                             Created: {formatDate(session.createdAt)}
-                          </p>
+                          </h3>
                           
-         {/* Clean Status Display */}
-         <div className="mt-2 text-xs text-gray-500">
-           <div className="flex items-center gap-4">
-             <span>Stage 1: {session.stages?.stage1?.status || 'pending'}</span>
-             <span>Stage 2: {session.stages?.stage2?.status || 'pending'}</span>
-             <span>Stage 3: {session.stages?.stage3?.status || 'pending'}</span>
-           </div>
-           <div className="mt-1 flex items-center gap-4">
-             <span>{session.totalCompanies} companies</span>
-             <span>{session.totalCompanyIds} IDs</span>
-             <span>{session.totalFinancials} financials</span>
-           </div>
-         </div>
+                          {/* Search Parameters - Digestible Data */}
+                          <div className="mb-2">
+                            <p className="text-sm text-gray-700 font-medium">
+                              {formatSearchParams(session.filters)}
+                            </p>
+                          </div>
+                          
+                          {/* Simple Progress Info */}
+                          <div className="flex items-center gap-4 text-xs text-gray-600">
+                            <span>{session.totalCompanies} companies</span>
+                            <span>•</span>
+                            <span>{session.totalFinancials > 0 ? `${session.totalFinancials} financial records` : 'No financials yet'}</span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           {getStatusBadge(session.status)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Stages:</span>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            session.stages?.stage1?.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            session.stages?.stage1?.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                            session.stages?.stage1?.status === 'error' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            Stage 1: {session.stages?.stage1?.status || 'pending'}
-                          </span>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            session.stages?.stage2?.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            session.stages?.stage2?.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                            session.stages?.stage2?.status === 'error' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            Stage 2: {session.stages?.stage2?.status || 'pending'}
-                          </span>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            session.stages?.stage3?.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            session.stages?.stage3?.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                            session.stages?.stage3?.status === 'error' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            Stage 3: {session.stages?.stage3?.status || 'pending'}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Est. time: {getEstimatedTime(session)}
+                        {/* Stage Progress - Simplified */}
+                        <div className="flex flex-col items-end gap-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              session.stages?.stage1?.status === 'completed' ? 'bg-green-500' :
+                              session.stages?.stage1?.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                              'bg-gray-300'
+                            }`}></span>
+                            <span className="text-xs text-gray-600">
+                              {session.stages?.stage1?.status === 'completed' ? 'Completed' :
+                               session.stages?.stage1?.status === 'running' ? 'Running' : 'Pending'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              session.stages?.stage2?.status === 'completed' ? 'bg-green-500' :
+                              session.stages?.stage2?.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                              'bg-gray-300'
+                            }`}></span>
+                            <span className="text-xs text-gray-600">
+                              {session.stages?.stage2?.status === 'completed' ? 'Completed' :
+                               session.stages?.stage2?.status === 'running' ? 'Running' : 'Pending'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              session.stages?.stage3?.status === 'completed' ? 'bg-green-500' :
+                              session.stages?.stage3?.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                              'bg-gray-300'
+                            }`}></span>
+                            <span className="text-xs text-gray-600">
+                              {session.stages?.stage3?.status === 'completed' ? 'Completed' :
+                               session.stages?.stage3?.status === 'running' ? 'Running' : 'Pending'}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>

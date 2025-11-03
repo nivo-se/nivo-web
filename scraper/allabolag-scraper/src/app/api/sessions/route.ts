@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
             totalCompanies: jobStats.companies,
             totalCompanyIds: jobStats.companyIds,
             totalFinancials: jobStats.financials,
-            filters: undefined
+            filters: job.params || undefined // Include search parameters from job
           };
           
           sessions.push(session);

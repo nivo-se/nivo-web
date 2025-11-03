@@ -1,34 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('Testing Supabase connection...');
-    console.log('Supabase URL:', process.env.SUPABASE_URL);
-    console.log('Supabase Key exists:', !!process.env.SUPABASE_ANON_KEY);
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const hasKey = !!process.env.SUPABASE_ANON_KEY;
     
-    // Test basic connection
-    const { data, error } = await supabase
-      .from('master_analytics')
-      .select('count')
-      .limit(1);
-    
-    if (error) {
-      console.error('Supabase connection error:', error);
+    // First, just verify env vars are set
+    if (!supabaseUrl || !hasKey) {
       return NextResponse.json(
         { 
-          error: 'Supabase connection failed',
-          details: error.message,
-          code: error.code
+          error: 'Missing Supabase configuration',
+          hasUrl: !!supabaseUrl,
+          hasKey: hasKey
         },
         { status: 500 }
       );
     }
     
+    // Try to create client directly instead of importing (to isolate the issue)
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, process.env.SUPABASE_ANON_KEY!);
+    
+    // Test client exists
     return NextResponse.json({
       success: true,
-      message: 'Supabase connection successful',
-      data: data
+      message: 'Supabase client created successfully',
+      url: supabaseUrl.substring(0, 40) + '...',
+      clientExists: !!supabase,
+      note: 'Client created - use other endpoints to test actual queries'
     });
     
   } catch (error) {

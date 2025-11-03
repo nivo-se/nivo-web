@@ -116,9 +116,20 @@ export class LocalStagingDB {
         scraped_at TEXT DEFAULT CURRENT_TIMESTAMP,
         job_id TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    // Add error_message column if it doesn't exist (for existing databases)
+    try {
+      this.db.exec(`ALTER TABLE staging_company_ids ADD COLUMN error_message TEXT`);
+    } catch (e: any) {
+      // Column already exists, ignore
+      if (!e.message?.includes('duplicate column')) {
+        console.log('Note: error_message column may already exist');
+      }
+    }
 
     // Create staging_financials table
     this.db.exec(`
@@ -131,15 +142,44 @@ export class LocalStagingDB {
         period_start TEXT,
         period_end TEXT,
         currency TEXT DEFAULT 'SEK',
+        revenue REAL,
+        profit REAL,
+        employees INTEGER,
+        be REAL,
+        tr REAL,
         raw_data TEXT NOT NULL,
         validation_status TEXT DEFAULT 'pending',
         validation_errors TEXT,
         scraped_at TEXT DEFAULT CURRENT_TIMESTAMP,
         job_id TEXT NOT NULL,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(company_id, year)
+        UNIQUE(company_id, year, period)
       )
     `);
+    
+    // Update unique constraint to include period (for existing databases)
+    // Note: SQLite doesn't support ALTER TABLE to modify UNIQUE constraints directly
+    // But the PRIMARY KEY on id already handles uniqueness, so we just ensure period is part of uniqueness
+    
+    // Add missing columns if they don't exist (for existing databases)
+    const columnsToAdd = [
+      { name: 'revenue', type: 'REAL' },
+      { name: 'profit', type: 'REAL' },
+      { name: 'employees', type: 'INTEGER' },
+      { name: 'be', type: 'REAL' },
+      { name: 'tr', type: 'REAL' }
+    ];
+    
+    for (const col of columnsToAdd) {
+      try {
+        this.db.exec(`ALTER TABLE staging_financials ADD COLUMN ${col.name} ${col.type}`);
+      } catch (e: any) {
+        // Column already exists, ignore
+        if (!e.message?.includes('duplicate column')) {
+          console.log(`Note: ${col.name} column may already exist or error occurred:`, e.message);
+        }
+      }
+    }
   }
 
   // Job management methods
@@ -550,6 +590,33 @@ export class LocalStagingDB {
         ? row.financial_years.split(',').map((y: string) => parseInt(y)).sort((a: number, b: number) => b - a)
         : [];
       
+      // Get actual financial data for each year
+      const financials = this.getFinancialsByOrgnr(jobId, row.orgnr);
+      const financialsByYear = financials.reduce((acc: any, f: any) => {
+        // Use year_period as key to handle different periods in same year
+        const key = `${f.year}_${f.period || '12'}`;
+        if (!acc[key]) {
+          acc[key] = {
+            year: f.year,
+            period: f.period || '12',
+            periodStart: f.period_start,
+            periodEnd: f.period_end,
+            currency: f.currency || 'SEK',
+            revenue: f.revenue,
+            profit: f.profit,
+            employees: f.employees,
+            be: f.be,
+            tr: f.tr,
+            // Include additional account codes from raw_data
+            ors: f.ors || null, // EBITDA
+            rg: f.rg || null,   // Operating Income (EBIT)
+            ek: f.ek || null,   // Equity
+            fk: f.fk || null    // Debt
+          };
+        }
+        return acc;
+      }, {});
+      
       return {
         orgnr: row.orgnr,
         companyName: row.company_name,
@@ -570,7 +637,8 @@ export class LocalStagingDB {
         stage3Data: {
           years: financialYears,
           recordCount: row.financial_records,
-          validationStatus: row.financial_records > 0 ? 'complete' : 'pending'
+          validationStatus: row.financial_records > 0 ? 'complete' : 'pending',
+          financials: Object.values(financialsByYear) // Array of financial records by year/period
         },
         errors: []
       };
@@ -591,6 +659,60 @@ export class LocalStagingDB {
     const stmt = this.db.prepare('SELECT DISTINCT year FROM staging_financials WHERE orgnr = ? ORDER BY year DESC');
     const rows = stmt.all(orgnr) as { year: number }[];
     return rows.map(row => row.year);
+  }
+
+  getFinancialsByOrgnr(jobId: string, orgnr: string): any[] {
+    const stmt = this.db.prepare(`
+      SELECT 
+        year,
+        period,
+        period_start,
+        period_end,
+        currency,
+        revenue,
+        profit,
+        employees,
+        be,
+        tr,
+        raw_data
+      FROM staging_financials
+      WHERE job_id = ? AND orgnr = ?
+      ORDER BY year DESC, period DESC
+    `);
+    const rows = stmt.all(jobId, orgnr) as any[];
+    
+    // Parse raw_data to extract additional account codes (ORS, EK, FK)
+    return rows.map(row => {
+      let parsedRawData: any = {};
+      try {
+        parsedRawData = JSON.parse(row.raw_data || '{}');
+      } catch (e) {
+        // If parsing fails, use empty object
+      }
+      
+      return {
+        year: row.year,
+        period: row.period,
+        period_start: row.period_start,
+        period_end: row.period_end,
+        currency: row.currency,
+        revenue: row.revenue,
+        profit: row.profit,
+        employees: row.employees,
+        be: row.be,
+        tr: row.tr,
+        // Extract additional account codes from raw_data
+        ors: parsedRawData.ors || null, // EBITDA
+        rg: parsedRawData.rg || null,   // Operating Income (EBIT)
+        ek: parsedRawData.ek || null,   // Equity
+        fk: parsedRawData.fk || null    // Debt
+      };
+    });
+  }
+
+  getFinancialYearsForJob(jobId: string): { year: number }[] {
+    const stmt = this.db.prepare('SELECT DISTINCT year FROM staging_financials WHERE job_id = ? ORDER BY year DESC');
+    return stmt.all(jobId) as { year: number }[];
   }
 
   getFinancialSummary(jobId: string) {

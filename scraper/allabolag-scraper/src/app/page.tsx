@@ -16,6 +16,8 @@ interface Job {
   rateLimitStats?: any;
   createdAt: string;
   updatedAt: string;
+  progressRate?: number; // companies per minute
+  estimatedTimeRemaining?: number; // minutes
 }
 
 interface MonitoringDashboard {
@@ -83,39 +85,54 @@ interface MigrationResult {
 interface ValidationData {
   companies: Array<{
     orgnr: string;
-    company_name: string;
-    company_id: string;
-    homepage: string;
-    foundation_year: number;
-    revenue_sek: number;
-    profit_sek: number;
-    segment_name: string[];
-    nace_categories: string[];
+    companyName: string;
+    companyId: string;
     status: string;
-    scraped_at: string;
-    financial_years: Array<{
-      year: number;
-      sdi: number;
-      dr: number;
-      ors: number;
-      ek: number;
-      fk: number;
-    }>;
-    additional_data: {
-      employees: string | null;
-      description: string | null;
-      phone: string | null;
-      email: string | null;
-      legalName: string | null;
-      domicile: any;
-      signatory: any;
-      directors: any;
+    stage1Data: {
+      revenue: number;
+      profit: number;
+      nace: string[];
+      segment: string[];
+      homepage: string | null;
+      foundedYear: number | null;
     };
+    stage2Data: {
+      companyId: string | null;
+      confidence: string | null;
+    };
+    stage3Data: {
+      years: number[];
+      recordCount: number;
+      validationStatus: string;
+      financials?: Array<{
+        year: number;
+        period: string;
+        periodStart: string | null;
+        periodEnd: string | null;
+        currency: string;
+        revenue: number | null;
+        profit: number | null;
+        employees: number | null;
+        be: number | null;
+        tr: number | null;
+        ors?: number | null; // EBITDA
+        rg?: number | null;   // Operating Income (EBIT)
+        ek?: number | null;  // Equity
+        fk?: number | null;  // Debt
+      }>;
+    };
+    errors: any[];
   }>;
   summary: {
-    total_companies: number;
-    companies_with_financials: number;
-    year_range: { min: number | null; max: number | null };
+    totalCompanies: number;
+    companiesWithIds: number;
+    companiesWithFinancials: number;
+    totalFinancialRecords: number;
+    avgRecordsPerCompany: number;
+    stage1Progress: number;
+    stage2Progress: number;
+    stage3Progress: number;
+    yearRange: { min: number | null; max: number | null };
   };
 }
 
@@ -151,10 +168,13 @@ export default function Home() {
   // Helper function to map backend job response to frontend format
   const mapJobResponse = (job: any) => ({
     ...job,
-    totalCompanies: job.stats?.companies || 0,
-    processedCount: job.stats?.companies || 0,
-    lastPage: 0,
-    errorCount: 0
+    totalCompanies: job.stats?.companies || job.totalCompanies || 0,
+    processedCount: job.processedCount || job.stats?.companies || 0,
+    lastPage: job.lastPage || 0,
+    errorCount: job.errorCount || job.stats?.errors || 0,
+    lastError: job.lastError || job.error || null,
+    stage: job.stage || 'stage1_segmentation',
+    status: job.status || 'pending'
   });
 
   // Fetch monitoring dashboard data
@@ -330,35 +350,100 @@ export default function Home() {
         status: 'running'
       } : null);
       
-      // Poll for financial fetch completion
+      // Poll for financial fetch completion with real-time updates
+      // Track progress for stall detection
+      let lastProcessedCount = currentJob?.processedCount || 0;
+      let lastProcessedTime = Date.now();
+      let stallWarningShown = false;
+      const STALL_THRESHOLD_MS = 30 * 1000; // 30 seconds without progress (new data should download immediately)
+      const TIMEOUT_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours total timeout
+      const jobStartTime = Date.now();
+      
       const pollFinancialStatus = async () => {
         try {
           const statusResponse = await fetch(`/api/segment/status?jobId=${currentJob.id}`);
           if (statusResponse.ok) {
             const job = await statusResponse.json();
             const mappedJob = mapJobResponse(job);
-            if (job.status === 'done' && job.stage === 'stage3_financials') {
-              setCurrentJob(prev => prev ? {
-                ...prev,
-                stage: 'stage3_financials',
-                status: 'done',
-                totalCompanies: mappedJob.totalCompanies,
-                processedCount: mappedJob.processedCount
-              } : null);
-            } else if (job.status === 'error') {
-              setCurrentJob(prev => prev ? {
-                ...prev,
-                stage: 'stage3_financials',
-                status: 'error'
-              } : null);
-              setError('Stage 3 failed: ' + (job.lastError || 'Unknown error'));
-            } else if (job.status === 'running') {
-              // Continue polling
-              setTimeout(pollFinancialStatus, 2000);
+            const currentProcessedCount = mappedJob.processedCount || 0;
+            const currentTime = Date.now();
+            const elapsedTime = currentTime - jobStartTime;
+            
+            // Check for progress (stall detection)
+            if (currentProcessedCount === lastProcessedCount && job.status === 'running') {
+              const timeSinceLastProgress = currentTime - lastProcessedTime;
+              
+              // Show stall warning if no progress for threshold
+              if (timeSinceLastProgress > STALL_THRESHOLD_MS && !stallWarningShown) {
+                stallWarningShown = true;
+                const secondsSinceProgress = Math.round(timeSinceLastProgress / 1000);
+                setError(`Warning: No progress detected for ${secondsSinceProgress} seconds. Process may be stalled. Check logs or try stopping/restarting.`);
+                console.warn(`Stall detected: No progress for ${secondsSinceProgress} seconds`);
+              }
+            } else {
+              // Progress detected, reset stall tracking
+              lastProcessedCount = currentProcessedCount;
+              lastProcessedTime = currentTime;
+              if (stallWarningShown) {
+                setError(null); // Clear stall warning if progress resumes
+                stallWarningShown = false;
+              }
             }
+            
+            // Check for timeout
+            if (elapsedTime > TIMEOUT_THRESHOLD_MS && job.status === 'running') {
+              setError(`Timeout: Job has been running for ${Math.round(elapsedTime / 3600000)} hours. This exceeds the 2-hour threshold. Consider stopping and investigating.`);
+              console.error(`Timeout detected: Job running for ${Math.round(elapsedTime / 3600000)} hours`);
+            }
+            
+            // Calculate progress rate
+            const progressRate = elapsedTime > 0 ? (currentProcessedCount / (elapsedTime / 60000)).toFixed(1) : '0';
+            const remaining = mappedJob.totalCompanies - currentProcessedCount;
+            const estimatedTimeRemaining = progressRate !== '0' && parseFloat(progressRate) > 0 
+              ? Math.round(remaining / parseFloat(progressRate)) 
+              : null;
+            
+            // Update job state with latest progress
+            setCurrentJob(prev => prev ? {
+              ...prev,
+              stage: mappedJob.stage || 'stage3_financials',
+              status: mappedJob.status,
+              processedCount: currentProcessedCount,
+              totalCompanies: mappedJob.totalCompanies,
+              errorCount: mappedJob.errorCount,
+              error: mappedJob.lastError,
+              // Add progress rate info for display
+              progressRate: parseFloat(progressRate),
+              estimatedTimeRemaining: estimatedTimeRemaining || undefined
+            } : null);
+            
+            // Check final status
+            if (job.status === 'done' || job.status === 'completed') {
+              console.log('Stage 3 completed');
+              setError(null); // Clear any warnings on completion
+              // Stop polling
+              return;
+            } else if (job.status === 'error' || job.status === 'stopped') {
+              console.log('Stage 3 stopped or errored');
+              setError(job.lastError || 'Stage 3 stopped');
+              // Stop polling
+              return;
+            } else if (job.status === 'running' || job.status === 'active') {
+              // Continue polling - update progress every 2 seconds for active jobs
+              setTimeout(pollFinancialStatus, 2000);
+            } else {
+              // Unknown status, continue polling but with longer interval
+              setTimeout(pollFinancialStatus, 5000);
+            }
+          } else {
+            // API error, continue polling with longer interval
+            console.error('Status API error:', statusResponse.status);
+            setTimeout(pollFinancialStatus, 5000);
           }
         } catch (err) {
           console.error('Error polling financial status:', err);
+          // Retry polling on error
+          setTimeout(pollFinancialStatus, 5000);
         }
       };
       
@@ -379,12 +464,8 @@ export default function Home() {
     setError(null);
 
     try {
-      const response = await fetch('/api/staging/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ jobId: currentJob.id }),
+      const response = await fetch(`/api/validation/data?jobId=${currentJob.id}`, {
+        method: 'GET',
       });
 
       if (!response.ok) {
@@ -496,12 +577,12 @@ export default function Home() {
 
   const formatCurrency = (value: number | null) => {
     if (value === null || value === undefined) return 'N/A';
+    // Values in DB are stored in thousands SEK (kSEK)
+    // Format as number with space separator and add "kkr" unit
     return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency: 'SEK',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(value);
+    }).format(value) + ' kkr';
   };
 
   const formatYearBadges = (years: number[]) => {
@@ -1149,10 +1230,44 @@ export default function Home() {
                       </button>
                     )}
                     
-                    {/* Show current stage progress */}
+                    {/* Show current stage progress with rate and ETA */}
                     {currentJob.status === 'running' && (
-                      <div className="w-full bg-blue-100 text-blue-800 py-3 px-4 rounded-md text-center font-medium">
-                        {getStageDisplayName(currentJob.stage)} in progress...
+                      <div className="w-full bg-blue-100 text-blue-800 py-3 px-4 rounded-md">
+                        <div className="text-center font-medium mb-2">
+                          {getStageDisplayName(currentJob.stage)} in progress...
+                        </div>
+                        <div className="text-sm space-y-1">
+                          <div className="flex justify-between">
+                            <span>Progress:</span>
+                            <span className="font-semibold">
+                              {currentJob.processedCount || 0} / {currentJob.totalCompanies || 0} companies
+                              {currentJob.totalCompanies && currentJob.totalCompanies > 0 && (
+                                <span className="ml-2">
+                                  ({Math.round(((currentJob.processedCount || 0) / currentJob.totalCompanies) * 100)}%)
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          {currentJob.progressRate && currentJob.progressRate > 0 && (
+                            <div className="flex justify-between">
+                              <span>Rate:</span>
+                              <span className="font-semibold">
+                                {currentJob.progressRate.toFixed(1)} companies/min
+                              </span>
+                            </div>
+                          )}
+                          {currentJob.estimatedTimeRemaining && currentJob.estimatedTimeRemaining > 0 && (
+                            <div className="flex justify-between">
+                              <span>Est. Remaining:</span>
+                              <span className="font-semibold">
+                                {currentJob.estimatedTimeRemaining < 60 
+                                  ? `${currentJob.estimatedTimeRemaining} min`
+                                  : `${Math.round(currentJob.estimatedTimeRemaining / 60)} hours ${currentJob.estimatedTimeRemaining % 60} min`
+                                }
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1625,25 +1740,25 @@ export default function Home() {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               Company
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               OrgNr
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               Foundation
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               Latest Revenue
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               Latest Profit
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               Financial Years
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               Actions
                             </th>
                           </tr>
@@ -1665,9 +1780,6 @@ export default function Home() {
                                     <td className="px-6 py-4 whitespace-nowrap">
                                       <div>
                                         <div className="text-sm font-medium text-gray-900">{company.companyName || 'N/A'}</div>
-                                        {company.additional_data?.employees && (
-                                          <div className="text-sm text-gray-500">Employees: {company.additional_data.employees}</div>
-                                        )}
                                       </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -1677,10 +1789,10 @@ export default function Home() {
                                       {company.stage1Data?.foundedYear || 'N/A'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                      {formatCurrency(latestFinancial?.sdi)}
+                                      {formatCurrency(company.stage1Data?.revenue)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                      {formatCurrency(latestFinancial?.dr)}
+                                      {formatCurrency(company.stage1Data?.profit)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                       {formatYearBadges(company.stage3Data?.years || [])}
@@ -1702,22 +1814,22 @@ export default function Home() {
                                         <div className="space-y-4">
                                           {/* Additional Company Data */}
                                           <div>
-                                            <h4 className="text-sm font-medium text-gray-900 mb-2">Company Information</h4>
+                                            <h4 className="text-sm font-semibold text-blue-700 mb-2">Company Information</h4>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                               <div>
-                                                <span className="font-medium">Legal Name:</span>
-                                                <div className="text-gray-600">{company.additional_data?.legalName || 'N/A'}</div>
+                                                <span className="font-medium text-gray-700">Company ID:</span>
+                                                <div className="text-gray-600">{company.companyId || 'N/A'}</div>
                                               </div>
                                               <div>
-                                                <span className="font-medium">Phone:</span>
-                                                <div className="text-gray-600">{company.additional_data?.phone || 'N/A'}</div>
+                                                <span className="font-medium text-gray-700">Status:</span>
+                                                <div className="text-gray-600">{company.status || 'N/A'}</div>
                                               </div>
                                               <div>
-                                                <span className="font-medium">Email:</span>
-                                                <div className="text-gray-600">{company.additional_data?.email || 'N/A'}</div>
+                                                <span className="font-medium text-gray-700">Financial Records:</span>
+                                                <div className="text-gray-600">{company.stage3Data?.recordCount || 0}</div>
                                               </div>
                                               <div>
-                                                <span className="font-medium">Homepage:</span>
+                                                <span className="font-medium text-gray-700">Homepage:</span>
                                                 <div className="text-gray-600">
                                                   {company.stage1Data?.homepage ? (
                                                     <a href={company.stage1Data.homepage} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
@@ -1727,22 +1839,14 @@ export default function Home() {
                                                 </div>
                                               </div>
                                             </div>
-                                            {company.additional_data?.domicile && (
-                                              <div className="mt-2 text-sm">
-                                                <span className="font-medium">Location:</span>
-                                                <div className="text-gray-600">
-                                                  {company.additional_data?.domicile?.municipality}, {company.additional_data?.domicile?.county}
-                                                </div>
-                                              </div>
-                                            )}
                                           </div>
 
                                           {/* Stage 2: Company ID Resolution */}
                                           <div>
-                                            <h4 className="text-sm font-medium text-gray-900 mb-2">Stage 2: Company ID Resolution</h4>
+                                            <h4 className="text-sm font-semibold text-blue-700 mb-2">Stage 2: Company ID Resolution</h4>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                               <div>
-                                                <span className="font-medium">Company ID:</span>
+                                                <span className="font-medium text-gray-700">Company ID:</span>
                                                 <div className="text-gray-600">
                                                   {company.stage2Data?.companyId ? (
                                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -1756,7 +1860,7 @@ export default function Home() {
                                                 </div>
                                               </div>
                                               <div>
-                                                <span className="font-medium">Confidence Score:</span>
+                                                <span className="font-medium text-gray-700">Confidence Score:</span>
                                                 <div className="text-gray-600">
                                                   {company.stage2Data?.confidence ? (
                                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -1772,30 +1876,38 @@ export default function Home() {
 
                                           {/* Financial Data by Year */}
                                           <div>
-                                            <h4 className="text-sm font-medium text-gray-900 mb-2">Financial Data by Year</h4>
+                                            <h4 className="text-sm font-semibold text-blue-700 mb-2">Financial Data by Year</h4>
                                             <div className="overflow-x-auto">
                                               <table className="min-w-full text-sm">
                                                 <thead>
-                                                  <tr className="border-b">
-                                                    <th className="text-left py-2">Year</th>
-                                                    <th className="text-right py-2">Revenue (SDI)</th>
-                                                    <th className="text-right py-2">Net Profit (DR)</th>
-                                                    <th className="text-right py-2">EBITDA (ORS)</th>
-                                                    <th className="text-right py-2">Equity (EK)</th>
-                                                    <th className="text-right py-2">Debt (FK)</th>
+                                                  <tr className="border-b bg-gray-50">
+                                                    <th className="text-left py-2 font-semibold text-gray-700">Year</th>
+                                                    <th className="text-right py-2 font-semibold text-gray-700">Revenue (SDI)</th>
+                                                    <th className="text-right py-2 font-semibold text-gray-700">Net Profit (DR)</th>
+                                                    <th className="text-right py-2 font-semibold text-gray-700">EBIT/EBITDA</th>
+                                                    <th className="text-right py-2 font-semibold text-gray-700">Equity (EK)</th>
+                                                    <th className="text-right py-2 font-semibold text-gray-700">Debt (FK)</th>
                                                   </tr>
                                                 </thead>
                                                 <tbody>
-                                                  {(company.stage3Data?.years || []).map((year) => (
-                                                    <tr key={year} className="border-b">
-                                                      <td className="py-2 font-medium">{year}</td>
-                                                      <td className="py-2 text-right">N/A</td>
-                                                      <td className="py-2 text-right">N/A</td>
-                                                      <td className="py-2 text-right">N/A</td>
-                                                      <td className="py-2 text-right">N/A</td>
-                                                      <td className="py-2 text-right">N/A</td>
-                                                    </tr>
-                                                  ))}
+                                                  {(company.stage3Data?.financials || company.stage3Data?.years?.map((year: number) => ({ year })) || []).map((financial: any) => {
+                                                    const year = financial.year || financial;
+                                                    const financialData = typeof financial === 'object' ? financial : null;
+                                                    
+                                                    // Find financial data for this year if we have it
+                                                    const yearData = company.stage3Data?.financials?.find((f: any) => f.year === year) || financialData;
+                                                    
+                                                    return (
+                                                      <tr key={`${year}_${yearData?.period || ''}`} className="border-b">
+                                                        <td className="py-2 font-medium text-gray-900">{year} {yearData?.period ? `(${yearData.period})` : ''}</td>
+                                                        <td className="py-2 text-right text-gray-900 font-medium">{yearData?.revenue ? formatCurrency(yearData.revenue) : <span className="text-gray-400">N/A</span>}</td>
+                                                        <td className="py-2 text-right text-gray-900 font-medium">{yearData?.profit ? formatCurrency(yearData.profit) : <span className="text-gray-400">N/A</span>}</td>
+                                                        <td className="py-2 text-right text-gray-900 font-medium">{yearData?.rg || yearData?.ors ? formatCurrency(yearData.rg || yearData.ors) : <span className="text-gray-400">N/A</span>}</td>
+                                                        <td className="py-2 text-right text-gray-900 font-medium">{yearData?.ek ? formatCurrency(yearData.ek) : <span className="text-gray-400">N/A</span>}</td>
+                                                        <td className="py-2 text-right text-gray-900 font-medium">{yearData?.fk ? formatCurrency(yearData.fk) : <span className="text-gray-400">N/A</span>}</td>
+                                                      </tr>
+                                                    );
+                                                  })}
                                                 </tbody>
                                               </table>
                                             </div>
@@ -1827,7 +1939,7 @@ export default function Home() {
                           </button>
                           <button
                             onClick={() => setCurrentPage(currentPage + 1)}
-                            disabled={currentPage * itemsPerPage >= validationData.companies?.length || 0}
+                            disabled={currentPage * itemsPerPage >= (validationData.companies?.length || 0)}
                             className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                           >
                             Next
@@ -1858,7 +1970,7 @@ export default function Home() {
                               </button>
                               <button
                                 onClick={() => setCurrentPage(currentPage + 1)}
-                                disabled={currentPage * itemsPerPage >= validationData.companies?.length || 0}
+                                disabled={currentPage * itemsPerPage >= (validationData.companies?.length || 0)}
                                 className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                               >
                                 Next
