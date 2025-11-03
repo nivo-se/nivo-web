@@ -740,9 +740,23 @@ export class LocalStagingDB {
       if (parsedRawData.pageProps?.company?.companyAccounts) {
         const companyAccounts = parsedRawData.pageProps.company.companyAccounts;
         // Find the report matching this year and period
-        const matchingReport = companyAccounts.find((r: any) => 
-          r.year === row.year && (r.period === row.period || r.period === row.period?.split('-')[0])
-        );
+        // Period can be in format "2024-08" or "12" or just the year
+        const period = row.period || '12';
+        const periodYear = period.split('-')[0];
+        const periodMonth = period.split('-')[1] || '12';
+        
+        const matchingReport = companyAccounts.find((r: any) => {
+          const reportYear = r.year;
+          const reportPeriod = String(r.period || '12');
+          // Match by year and try to match period (can be "2024-08" or "12" or "08")
+          return reportYear === row.year && (
+            reportPeriod === period || 
+            reportPeriod === periodMonth ||
+            reportPeriod === periodYear ||
+            period === reportPeriod
+          );
+        });
+        
         if (matchingReport?.accounts) {
           for (const account of matchingReport.accounts) {
             if (account.code && account.amount !== null && account.amount !== undefined) {
