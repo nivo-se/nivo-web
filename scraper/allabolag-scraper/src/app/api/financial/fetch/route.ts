@@ -193,16 +193,51 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
                 employees: financial.additionalCompanyData?.employees || financial.employees || null,
                 be: financial.be || null,
                 tr: financial.tr || null,
-                // Store additional account codes in rawData for full record
-                rawData: JSON.stringify({
-                  ...(financial.rawData || financial.completeRawData || {}),
-                  // Include all account codes for reference
-                  ors: financial.ors || null, // EBITDA
-                  rg: financial.rg || null,    // Operating Income (EBIT)
-                  ek: financial.ek || null,   // Equity
-                  fk: financial.fk || null,     // Debt
-                  sdi: financial.sdi || null,  // Revenue (also in revenue field)
-                  dr: financial.dr || null     // Net profit (also in profit field)
+                // Store COMPLETE raw JSON response from Allabolag.se
+                // This includes all account codes, company data, and metadata
+                rawData: JSON.stringify(financial.completeRawData || financial.rawData || {
+                  // Fallback: include all extracted account codes if complete raw data not available
+                  sdi: financial.sdi || null,
+                  dr: financial.dr || null,
+                  ors: financial.ors || null,
+                  rg: financial.rg || null,
+                  ek: financial.ek || null,
+                  fk: financial.fk || null,
+                  adi: financial.adi || null,
+                  adk: financial.adk || null,
+                  adr: financial.adr || null,
+                  ak: financial.ak || null,
+                  ant: financial.ant || null,
+                  fi: financial.fi || null,
+                  gg: financial.gg || null,
+                  kbp: financial.kbp || null,
+                  lg: financial.lg || null,
+                  sap: financial.sap || null,
+                  sed: financial.sed || null,
+                  si: financial.si || null,
+                  sek: financial.sek || null,
+                  sf: financial.sf || null,
+                  sfa: financial.sfa || null,
+                  sge: financial.sge || null,
+                  sia: financial.sia || null,
+                  sik: financial.sik || null,
+                  skg: financial.skg || null,
+                  skgki: financial.skgki || null,
+                  sko: financial.sko || null,
+                  slg: financial.slg || null,
+                  som: financial.som || null,
+                  sub: financial.sub || null,
+                  sv: financial.sv || null,
+                  svd: financial.svd || null,
+                  utr: financial.utr || null,
+                  fsd: financial.fsd || null,
+                  kb: financial.kb || null,
+                  awa: financial.awa || null,
+                  iac: financial.iac || null,
+                  min: financial.min || null,
+                  be: financial.be || null,
+                  tr: financial.tr || null,
+                  additionalCompanyData: financial.additionalCompanyData || null
                 }),
                 validationStatus: 'pending',
                 scrapedAt: new Date().toISOString(),

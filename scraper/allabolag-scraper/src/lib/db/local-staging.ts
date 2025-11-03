@@ -596,6 +596,7 @@ export class LocalStagingDB {
         // Use year_period as key to handle different periods in same year
         const key = `${f.year}_${f.period || '12'}`;
         if (!acc[key]) {
+          // Include ALL account codes and metrics from raw_data (50+ metrics)
           acc[key] = {
             year: f.year,
             period: f.period || '12',
@@ -607,11 +608,48 @@ export class LocalStagingDB {
             employees: f.employees,
             be: f.be,
             tr: f.tr,
-            // Include additional account codes from raw_data
+            // Core financial metrics
+            sdi: f.sdi || null,
+            dr: f.dr || null,
             ors: f.ors || null, // EBITDA
             rg: f.rg || null,   // Operating Income (EBIT)
             ek: f.ek || null,   // Equity
-            fk: f.fk || null    // Debt
+            fk: f.fk || null,   // Debt
+            // Additional account codes (50+ metrics)
+            adi: f.adi || null,
+            adk: f.adk || null,
+            adr: f.adr || null,
+            ak: f.ak || null,
+            ant: f.ant || null,
+            fi: f.fi || null,
+            gg: f.gg || null,
+            kbp: f.kbp || null,
+            lg: f.lg || null,
+            sap: f.sap || null,
+            sed: f.sed || null,
+            si: f.si || null,
+            sek: f.sek || null,
+            sf: f.sf || null,
+            sfa: f.sfa || null,
+            sge: f.sge || null,
+            sia: f.sia || null,
+            sik: f.sik || null,
+            skg: f.skg || null,
+            skgki: f.skgki || null,
+            sko: f.sko || null,
+            slg: f.slg || null,
+            som: f.som || null,
+            sub: f.sub || null,
+            sv: f.sv || null,
+            svd: f.svd || null,
+            utr: f.utr || null,
+            fsd: f.fsd || null,
+            kb: f.kb || null,
+            awa: f.awa || null,
+            iac: f.iac || null,
+            min: f.min || null,
+            // Complete raw data for reference (includes all JSON data)
+            rawData: f.rawData || null
           };
         }
         return acc;
@@ -681,7 +719,7 @@ export class LocalStagingDB {
     `);
     const rows = stmt.all(jobId, orgnr) as any[];
     
-    // Parse raw_data to extract additional account codes (ORS, EK, FK)
+    // Parse raw_data to extract ALL account codes (50+ metrics)
     return rows.map(row => {
       let parsedRawData: any = {};
       try {
@@ -690,6 +728,7 @@ export class LocalStagingDB {
         // If parsing fails, use empty object
       }
       
+      // Extract ALL account codes from raw_data (50+ metrics)
       return {
         year: row.year,
         period: row.period,
@@ -701,11 +740,48 @@ export class LocalStagingDB {
         employees: row.employees,
         be: row.be,
         tr: row.tr,
-        // Extract additional account codes from raw_data
-        ors: parsedRawData.ors || null, // EBITDA
-        rg: parsedRawData.rg || null,   // Operating Income (EBIT)
-        ek: parsedRawData.ek || null,   // Equity
-        fk: parsedRawData.fk || null    // Debt
+        // Core financial metrics
+        sdi: parsedRawData.sdi || null,  // Revenue
+        dr: parsedRawData.dr || null,    // Net profit
+        ors: parsedRawData.ors || null,  // EBITDA
+        rg: parsedRawData.rg || null,    // Operating Income (EBIT)
+        ek: parsedRawData.ek || null,    // Equity
+        fk: parsedRawData.fk || null,    // Debt
+        // Additional account codes (50+ metrics)
+        adi: parsedRawData.adi || null,
+        adk: parsedRawData.adk || null,
+        adr: parsedRawData.adr || null,
+        ak: parsedRawData.ak || null,
+        ant: parsedRawData.ant || null,
+        fi: parsedRawData.fi || null,
+        gg: parsedRawData.gg || null,
+        kbp: parsedRawData.kbp || null,
+        lg: parsedRawData.lg || null,
+        sap: parsedRawData.sap || null,
+        sed: parsedRawData.sed || null,
+        si: parsedRawData.si || null,
+        sek: parsedRawData.sek || null,
+        sf: parsedRawData.sf || null,
+        sfa: parsedRawData.sfa || null,
+        sge: parsedRawData.sge || null,
+        sia: parsedRawData.sia || null,
+        sik: parsedRawData.sik || null,
+        skg: parsedRawData.skg || null,
+        skgki: parsedRawData.skgki || null,
+        sko: parsedRawData.sko || null,
+        slg: parsedRawData.slg || null,
+        som: parsedRawData.som || null,
+        sub: parsedRawData.sub || null,
+        sv: parsedRawData.sv || null,
+        svd: parsedRawData.svd || null,
+        utr: parsedRawData.utr || null,
+        fsd: parsedRawData.fsd || null,
+        kb: parsedRawData.kb || null,
+        awa: parsedRawData.awa || null,
+        iac: parsedRawData.iac || null,
+        min: parsedRawData.min || null,
+        // Complete raw data for reference
+        rawData: parsedRawData
       };
     });
   }
