@@ -29,14 +29,15 @@ export async function POST(request: NextRequest) {
     const params = StartSegmentationSchema.parse(normalizedBody);
     console.log('Parsed params:', params);
     
-    // Convert millions SEK to thousands SEK for Allabolag.se API
     // Allabolag.se expects values in thousands of SEK
+    // User input: 50 M SEK → Send to API: 50,000 k SEK (50 * 1000)
+    // User input: 0.5 M SEK → Send to API: 500 k SEK (0.5 * 1000)
     const scraperParams = {
       ...params,
-      revenueFrom: params.revenueFrom * 1000,  // 100M SEK = 100,000 thousands SEK
-      revenueTo: params.revenueTo * 1000,      // 101M SEK = 101,000 thousands SEK
-      profitFrom: params.profitFrom ? params.profitFrom * 1000 : undefined,  // 3M SEK = 3,000 thousands SEK
-      profitTo: params.profitTo ? params.profitTo * 1000 : undefined,        // 5M SEK = 5,000 thousands SEK
+      revenueFrom: params.revenueFrom * 1000,  // 50 M SEK = 50,000 k SEK
+      revenueTo: params.revenueTo * 1000,       // 60 M SEK = 60,000 k SEK
+      profitFrom: params.profitFrom ? params.profitFrom * 1000 : undefined,  // 0.5 M SEK = 500 k SEK
+      profitTo: params.profitTo ? params.profitTo * 1000 : 9999999,  // Set very high upper limit if not provided (9999 M SEK = 9,999,000 k SEK)
     };
     console.log('Scraper params:', scraperParams);
     
