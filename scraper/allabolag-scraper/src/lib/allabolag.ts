@@ -19,11 +19,9 @@ export async function getAllabolagSession(): Promise<AllabolagSession> {
       method: 'GET',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br', // Keep compression - reduces data size
+        // Removed unnecessary headers to reduce request size
       }
     });
 
@@ -204,6 +202,7 @@ export async function fetchSegmentationPage(
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'application/json',
+      'Accept-Encoding': 'gzip, deflate, br', // Keep compression - reduces data size
       'Referer': 'https://www.allabolag.se/segmentering'
     };
     
@@ -242,7 +241,8 @@ export async function fetchSearchPage(
     const htmlUrl = `https://www.allabolag.se/bransch-sok?${searchParams}`;
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br', // Keep compression - reduces data size
       'Referer': 'https://www.allabolag.se/'
     };
     
