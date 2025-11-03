@@ -13,7 +13,9 @@ export async function getAllabolagSession(): Promise<AllabolagSession> {
   console.log('🔐 Fetching new Allabolag session...');
   
   try {
-    const response = await fetch('https://www.allabolag.se/', {
+    // Use VPN-aware fetch if VPN is enabled
+    const { fetchWithVPN } = await import('./vpn-integration');
+    const response = await fetchWithVPN('https://www.allabolag.se/', {
       method: 'GET',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
