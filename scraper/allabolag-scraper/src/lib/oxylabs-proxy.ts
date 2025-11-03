@@ -125,14 +125,28 @@ export class OxylabsProxy {
         headersObj[key] = value;
       });
       
+      // Convert method to uppercase for node-fetch (if provided)
+      const method = options.method ? options.method.toUpperCase() : 'GET';
+      
       const response = await fetch(url, {
         ...options,
+        method: method,
         agent: this.proxyAgent,
         headers: headersObj
       });
       
       // node-fetch v2 Response is compatible with fetch Response API
-      // Return as-is - it should work with the rest of the code
+      // However, we need to ensure getSetCookie works correctly
+      // Add getSetCookie method if it doesn't exist (node-fetch v2 compatibility)
+      if (!response.headers.getSetCookie && response.headers.raw) {
+        (response.headers as any).getSetCookie = () => {
+          const setCookieHeader = response.headers.raw()['set-cookie'] || [];
+          return setCookieHeader.map((cookie: string) => {
+            // node-fetch returns cookies as strings, need to format properly
+            return cookie.split(';')[0].trim();
+          });
+        };
+      }
 
       // Track success
       if (response.ok) {
