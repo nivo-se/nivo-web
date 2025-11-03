@@ -119,11 +119,20 @@ export class OxylabsProxy {
       // Use node-fetch v2 which properly supports HttpsProxyAgent
       const fetch = (await import('node-fetch')).default;
       
+      // Convert headers to plain object for node-fetch
+      const headersObj: Record<string, string> = {};
+      headers.forEach((value, key) => {
+        headersObj[key] = value;
+      });
+      
       const response = await fetch(url, {
         ...options,
         agent: this.proxyAgent,
-        headers: headers
+        headers: headersObj
       });
+      
+      // node-fetch v2 Response is compatible with fetch Response API
+      // Return as-is - it should work with the rest of the code
 
       // Track success
       if (response.ok) {
