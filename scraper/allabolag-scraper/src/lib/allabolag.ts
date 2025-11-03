@@ -13,19 +13,35 @@ export async function getAllabolagSession(): Promise<AllabolagSession> {
   console.log('🔐 Fetching new Allabolag session...');
   
   try {
-    // Use VPN-aware fetch if VPN is enabled
-    const { fetchWithVPN } = await import('./vpn-integration');
-    const response = await fetchWithVPN('https://www.allabolag.se/', {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-      }
-    });
+    // Use VPN-aware fetch if VPN is enabled, otherwise use regular fetch
+    let response: Response;
+    try {
+      const { fetchWithVPN } = await import('./vpn-integration');
+      response = await fetchWithVPN('https://www.allabolag.se/', {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        }
+      });
+    } catch (error) {
+      // Fallback to regular fetch if VPN integration fails
+      response = await fetch('https://www.allabolag.se/', {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        }
+      });
+    }
 
     if (!response.ok) {
       throw new Error(`Failed to fetch session: ${response.status} ${response.statusText}`);
