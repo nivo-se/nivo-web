@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       revenueFrom: params.revenueFrom * 1000,  // 50 M SEK = 50,000 k SEK
       revenueTo: params.revenueTo * 1000,       // 60 M SEK = 60,000 k SEK
       profitFrom: params.profitFrom ? params.profitFrom * 1000 : undefined,  // 0.5 M SEK = 500 k SEK
-      profitTo: params.profitTo ? params.profitTo * 1000 : 9999999,  // Set very high upper limit if not provided (9999 M SEK = 9,999,000 k SEK)
+      profitTo: params.profitTo ? params.profitTo * 1000 : 100000000,  // Set very high upper limit if not provided (100,000 M SEK = 100,000,000 k SEK) - matches Allabolag's max
     };
     console.log('Scraper params:', scraperParams);
     
