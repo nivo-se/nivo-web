@@ -1,18 +1,18 @@
 # Oxylabs Configuration Example
 
-## Your Configuration
+## Your Configuration (US Proxy)
 
-Based on your credentials:
+Based on your credentials and dashboard:
 
 ```env
 OXYLABS_ENABLED="true"
 OXYLABS_USERNAME="user-jason_Z2AvH"
 OXYLABS_PASSWORD="DGREF56ge+iun_654"
 OXYLABS_PROXY_TYPE="datacenter"
-OXYLABS_COUNTRY="us"
+OXYLABS_COUNTRY="us"  # United States (as shown in your dashboard)
 OXYLABS_SESSION_TYPE="rotate"
 OXYLABS_COUNTRY_IN_USERNAME="true"
-OXYLABS_PORT="8000"
+OXYLABS_PORT="8000"  # or 8001-8005 as shown in your proxy list
 ```
 
 ## How It Works
@@ -30,7 +30,22 @@ When `OXYLABS_COUNTRY_IN_USERNAME="true"`:
 http://user-jason_Z2AvH-country-US:DGREF56ge+iun_654@dc.oxylabs.io:8000
 ```
 
-### For Sweden (Allabolag.se)
+### Your Current Configuration (US Proxy)
+
+```env
+OXYLABS_ENABLED="true"
+OXYLABS_USERNAME="user-jason_Z2AvH"
+OXYLABS_PASSWORD="DGREF56ge+iun_654"
+OXYLABS_PROXY_TYPE="datacenter"
+OXYLABS_COUNTRY="us"  # United States
+OXYLABS_SESSION_TYPE="rotate"
+OXYLABS_COUNTRY_IN_USERNAME="true"
+OXYLABS_PORT="8000"
+```
+
+This will create: `user-jason_Z2AvH-country-US@dc.oxylabs.io:8000`
+
+### For Sweden (Optional - if you want Swedish IPs for Allabolag.se)
 
 ```env
 OXYLABS_ENABLED="true"
@@ -47,11 +62,19 @@ This will create: `user-jason_Z2AvH-country-SE@dc.oxylabs.io:8000`
 
 ## Testing
 
-Test your proxy connection:
+Test your proxy connection (US):
 
 ```bash
 curl -x dc.oxylabs.io:8000 \
-  -U "user-jason_Z2AvH-country-SE:DGREF56ge+iun_654" \
+  -U "user-jason_Z2AvH-country-US:DGREF56ge+iun_654" \
+  https://ip.oxylabs.io/location
+```
+
+Or test with any port from your proxy list (8001-8005):
+
+```bash
+curl -x dc.oxylabs.io:8001 \
+  -U "user-jason_Z2AvH-country-US:DGREF56ge+iun_654" \
   https://ip.oxylabs.io/location
 ```
 
@@ -98,9 +121,9 @@ OXYLABS_ENABLED="true"
 OXYLABS_USERNAME="user-jason_Z2AvH"
 OXYLABS_PASSWORD="DGREF56ge+iun_654"
 OXYLABS_PROXY_TYPE="datacenter"
-OXYLABS_COUNTRY="se"
+OXYLABS_COUNTRY="us"  # United States (as per your dashboard)
 OXYLABS_COUNTRY_IN_USERNAME="true"
-OXYLABS_PORT="8000"
+OXYLABS_PORT="8000"  # or 8001-8005 from your proxy list
 ```
 
 2. Start scraper:
@@ -112,8 +135,10 @@ npm run dev
 3. Check logs for:
 ```
 ✅ Oxylabs datacenter proxy initialized
-   Country: se
+   Country: us
    Session: rotate
-   Proxy URL: http://user-jason_Z2AvH-country-SE:***@dc.oxylabs.io:8000
+   Proxy URL: http://user-jason_Z2AvH-country-US:***@dc.oxylabs.io:8000
 ```
+
+**Note**: Your dashboard shows multiple ports (8001-8005). You can use any of these ports. The system will automatically use the configured port.
 

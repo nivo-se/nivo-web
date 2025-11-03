@@ -29,7 +29,7 @@ export function loadOxylabsConfig(): OxylabsConfig | null {
     username,
     password,
     proxyType: (process.env.OXYLABS_PROXY_TYPE as 'residential' | 'isp' | 'datacenter') || 'datacenter',
-    country: process.env.OXYLABS_COUNTRY || undefined, // e.g., 'se' for Sweden, 'us' for US
+    country: process.env.OXYLABS_COUNTRY || 'us', // Default: 'us' for United States, can be 'se' for Sweden, etc.
     sessionType: (process.env.OXYLABS_SESSION_TYPE as 'rotate' | 'sticky') || 'rotate',
     port: parseInt(process.env.OXYLABS_PORT || '8000', 10), // Default 8000 for datacenter
     countryInUsername: process.env.OXYLABS_COUNTRY_IN_USERNAME === 'true' // If true, country in username format
@@ -46,7 +46,7 @@ export const defaultOxylabsConfig: OxylabsConfig = {
   username: '',
   password: '',
   proxyType: 'datacenter',
-  country: 'se', // Sweden
+  country: 'us', // United States (default)
   sessionType: 'rotate',
   port: 8000,
   countryInUsername: true // Country targeting in username format
