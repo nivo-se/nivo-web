@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
 async function processEnrichmentJob(jobId: string, localDb: LocalStagingDB) {
   return withSession(async (session) => {
     const buildId = await getBuildId(session);
-    const batchSize = 10; // Smaller batch size for API calls
+    const batchSize = 50; // Batch size for processing
+    const concurrency = 10; // Concurrent requests per batch
     let processedCount = 0;
     
     console.log(`Starting Stage 2 enrichment for job ${jobId} with buildId: ${buildId}`);
@@ -87,87 +88,101 @@ async function processEnrichmentJob(jobId: string, localDb: LocalStagingDB) {
       const companiesToEnrich = companiesToProcess.slice(0, batchSize);
       console.log(`Processing batch of ${companiesToEnrich.length} companies for company ID resolution`);
       
-      // Process each company to resolve its actual company ID
-      for (const company of companiesToEnrich) {
-        try {
-          console.log(`Resolving company ID for ${company.companyName} (${company.orgnr})`);
-          
-          // Search Allabolag.se directly for the company ID
+      // Process in chunks with controlled concurrency
+      const chunks: any[] = [];
+      for (let i = 0; i < companiesToEnrich.length; i += concurrency) {
+        chunks.push(companiesToEnrich.slice(i, i + concurrency));
+      }
+      
+      for (const chunk of chunks) {
+        // Process companies concurrently within chunk
+        const promises = chunk.map(async (company: any) => {
           try {
-            console.log(`Searching Allabolag.se for company ID: ${company.companyName} (${company.orgnr})`);
+            console.log(`Resolving company ID for ${company.companyName} (${company.orgnr})`);
             
-            // Search for the company using its name to get the real company ID
-            const searchResults = await fetchSearchPage(buildId, company.companyName, session);
-          
-          // Extract companies from the correct path in the search results
-          const companies = searchResults?.pageProps?.hydrationData?.searchStore?.companies?.companies || 
-                           searchResults?.pageProps?.companies || [];
-          
-          console.log(`Found ${companies.length} companies in search results for ${company.companyName}`);
-          
-          // Find the company that matches our orgnr
-          const matchingCompany = companies.find((c: any) => 
-            c.orgnr === company.orgnr || c.organisationNumber === company.orgnr
-          );
-          
-          if (matchingCompany) {
-            // Extract company ID from the search results
-            const realCompanyId = matchingCompany.companyId || matchingCompany.listingId;
-            
-            console.log(`Matching company found:`, {
-              name: matchingCompany.name,
-              orgnr: matchingCompany.orgnr,
-              companyId: matchingCompany.companyId,
-              listingId: matchingCompany.listingId
-            });
-            
-            if (realCompanyId) {
-              console.log(`Found company ID: ${realCompanyId} for ${company.companyName} (${company.orgnr})`);
+            // Search Allabolag.se directly for the company ID
+            try {
+              console.log(`Searching Allabolag.se for company ID: ${company.companyName} (${company.orgnr})`);
               
-              // Insert the resolved company ID
-              const companyIdRecord = {
-                orgnr: company.orgnr,
-                companyId: realCompanyId,
-                source: 'allabolag_search',
-                confidenceScore: '1.0',
-                scrapedAt: new Date().toISOString(),
-                jobId: jobId,
-                status: 'resolved',
-                updatedAt: new Date().toISOString()
-              };
+              // Search for the company using its name to get the real company ID
+              const searchResults = await fetchSearchPage(buildId, company.companyName, session);
+            
+              // Extract companies from the correct path in the search results
+              const companies = searchResults?.pageProps?.hydrationData?.searchStore?.companies?.companies || 
+                               searchResults?.pageProps?.companies || [];
               
-              localDb.insertCompanyIds([companyIdRecord]);
-              localDb.updateCompanyStatus(jobId, company.orgnr, 'id_resolved');
-            } else {
-              console.log(`Found company but could not extract company ID for ${company.companyName} (${company.orgnr})`);
-              console.log('Company data:', JSON.stringify(matchingCompany, null, 2));
+              console.log(`Found ${companies.length} companies in search results for ${company.companyName}`);
+              
+              // Find the company that matches our orgnr
+              const matchingCompany = companies.find((c: any) => 
+                c.orgnr === company.orgnr || c.organisationNumber === company.orgnr
+              );
+              
+              if (matchingCompany) {
+                // Extract company ID from the search results
+                const realCompanyId = matchingCompany.companyId || matchingCompany.listingId;
+                
+                console.log(`Matching company found:`, {
+                  name: matchingCompany.name,
+                  orgnr: matchingCompany.orgnr,
+                  companyId: matchingCompany.companyId,
+                  listingId: matchingCompany.listingId
+                });
+                
+                if (realCompanyId) {
+                  console.log(`Found company ID: ${realCompanyId} for ${company.companyName} (${company.orgnr})`);
+                  
+                  // Insert the resolved company ID
+                  const companyIdRecord = {
+                    orgnr: company.orgnr,
+                    companyId: realCompanyId,
+                    source: 'allabolag_search',
+                    confidenceScore: '1.0',
+                    scrapedAt: new Date().toISOString(),
+                    jobId: jobId,
+                    status: 'resolved',
+                    updatedAt: new Date().toISOString()
+                  };
+                  
+                  localDb.insertCompanyIds([companyIdRecord]);
+                  localDb.updateCompanyStatus(jobId, company.orgnr, 'id_resolved');
+                  return { processed: true, success: true };
+                } else {
+                  console.log(`Found company but could not extract company ID for ${company.companyName} (${company.orgnr})`);
+                  console.log('Company data:', JSON.stringify(matchingCompany, null, 2));
+                  localDb.updateCompanyStatus(jobId, company.orgnr, 'id_not_found');
+                  return { processed: true, success: false };
+                }
+              } else {
+                console.log(`No matching company found for ${company.companyName} (${company.orgnr})`);
+                localDb.updateCompanyStatus(jobId, company.orgnr, 'id_not_found');
+                return { processed: true, success: false };
+              }
+            } catch (searchError) {
+              console.log(`Error searching Allabolag.se for ${company.companyName} (${company.orgnr}):`, (searchError as Error).message);
               localDb.updateCompanyStatus(jobId, company.orgnr, 'id_not_found');
+              return { processed: true, success: false };
             }
-          } else {
-            console.log(`No matching company found for ${company.companyName} (${company.orgnr})`);
-            localDb.updateCompanyStatus(jobId, company.orgnr, 'id_not_found');
+          } catch (error) {
+            console.error(`Error resolving company ID for ${company.companyName} (${company.orgnr}):`, error);
+            localDb.updateCompanyStatus(jobId, company.orgnr, 'error', (error as Error).message);
+            return { processed: true, success: false };
           }
-        } catch (searchError) {
-          console.log(`Error searching Allabolag.se for ${company.companyName} (${company.orgnr}):`, (searchError as Error).message);
-          localDb.updateCompanyStatus(jobId, company.orgnr, 'id_not_found');
-        }
+        });
         
-        processedCount++;
+        // Wait for all promises in chunk to complete
+        const results = await Promise.all(promises);
+        const chunkProcessed = results.filter(r => r?.processed).length;
+        processedCount += chunkProcessed;
         
         // Update job progress
         localDb.updateJob(jobId, {
           processedCount: processedCount
         });
         
-        // Rate limiting delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-      } catch (error) {
-        console.error(`Error resolving company ID for ${company.companyName} (${company.orgnr}):`, error);
-        localDb.updateCompanyStatus(jobId, company.orgnr, 'error', (error as Error).message);
-        processedCount++;
+        // Small delay between chunks to avoid overwhelming the proxy
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    }
   }
   
   // Mark job as done
