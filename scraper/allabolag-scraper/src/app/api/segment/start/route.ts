@@ -8,8 +8,8 @@ import { getBuildId, fetchSegmentationPage, normalizeCompany, getAllabolagSessio
 const StartSegmentationSchema = z.object({
   revenueFrom: z.number().min(0),
   revenueTo: z.number().min(0),
-  profitFrom: z.number().min(0).optional(),
-  profitTo: z.number().min(0).optional(),
+  profitFrom: z.number().optional(), // Allow negative values for companies with losses
+  profitTo: z.number().optional(),
   companyType: z.literal("AB").optional().default("AB"),
 });
 
@@ -32,12 +32,13 @@ export async function POST(request: NextRequest) {
     // Allabolag.se expects values in thousands of SEK
     // User input: 50 M SEK → Send to API: 50,000 k SEK (50 * 1000)
     // User input: 0.5 M SEK → Send to API: 500 k SEK (0.5 * 1000)
+    // For profitFrom: Allow negative values to capture companies with losses (e.g., -0.5 M SEK = -500 k SEK)
     const scraperParams = {
       ...params,
       revenueFrom: params.revenueFrom * 1000,  // 50 M SEK = 50,000 k SEK
       revenueTo: params.revenueTo * 1000,       // 60 M SEK = 60,000 k SEK
-      profitFrom: params.profitFrom ? params.profitFrom * 1000 : undefined,  // 0.5 M SEK = 500 k SEK
-      profitTo: params.profitTo ? params.profitTo * 1000 : 100000000,  // Set very high upper limit if not provided (100,000 M SEK = 100,000,000 k SEK) - matches Allabolag's max
+      profitFrom: params.profitFrom !== undefined ? params.profitFrom * 1000 : -500,  // Use user's value, or default to -500 k SEK to capture companies with losses
+      profitTo: params.profitTo ? params.profitTo * 1000 : 100000000,  // Set very high upper limit if not provided (100,000 M SEK = 100,000,000 k SEK)
     };
     console.log('Scraper params:', scraperParams);
     
