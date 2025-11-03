@@ -46,16 +46,25 @@ export async function fetchWithOxylabsProxy(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const proxy = getOxylabsProxy();
+  let proxy = getOxylabsProxy();
   
+  // Auto-initialize if not already initialized
   if (!proxy) {
-    // Check if proxy should be enabled
     const config = loadOxylabsConfig();
     if (config && config.enabled) {
-      throw new Error('Oxylabs proxy is required but not initialized. Please check your OXYLABS_ENABLED and credentials. Scraping stopped.');
+      console.log('🔄 Auto-initializing Oxylabs proxy...');
+      try {
+        proxy = initializeOxylabs(config);
+        console.log(`✅ Oxylabs ${config.proxyType} proxy auto-initialized`);
+        console.log(`   Country: ${config.country || 'any'}`);
+        console.log(`   Session: ${config.sessionType}`);
+      } catch (error) {
+        console.error('❌ Failed to auto-initialize Oxylabs proxy:', error);
+        throw new Error(`Oxylabs proxy is required but failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your OXYLABS_USERNAME and OXYLABS_PASSWORD. Scraping stopped.`);
+      }
+    } else {
+      throw new Error('Oxylabs proxy not initialized. Please enable OXYLABS_ENABLED=true and provide credentials. Scraping stopped.');
     }
-    // Proxy not enabled - this shouldn't happen if we're here, but allow it
-    throw new Error('Oxylabs proxy not initialized. Please enable OXYLABS_ENABLED=true and provide credentials. Scraping stopped.');
   }
 
   // Use Oxylabs proxy - retry on transient errors, fail on auth errors
