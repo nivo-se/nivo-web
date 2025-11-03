@@ -11,10 +11,12 @@ export interface OxylabsConfig {
   enabled: boolean;
   username: string;
   password: string;
-  proxyType: 'residential' | 'isp';
-  country?: string; // ISO country code (e.g., 'se' for Sweden)
+  proxyType: 'residential' | 'isp' | 'datacenter';
+  country?: string; // ISO country code (e.g., 'se' for Sweden, 'us' for US)
   sessionType?: 'rotate' | 'sticky'; // IP rotation strategy
   port?: number;
+  // Country targeting can be in username format: username-country-XX
+  countryInUsername?: boolean; // If true, country is added to username
 }
 
 export interface OxylabsStats {
@@ -35,15 +37,35 @@ export class OxylabsProxy {
     this.config = {
       port: 7777,
       sessionType: 'rotate',
+      countryInUsername: false,
       ...config
     };
 
-    // Build proxy URL
-    const host = this.config.proxyType === 'residential' 
-      ? 'pr.oxylabs.io' 
-      : 'isp.oxylabs.io';
+    // Build proxy URL based on proxy type
+    let host: string;
+    let port: number;
     
-    this.proxyUrl = `http://${this.config.username}:${this.config.password}@${host}:${this.config.port}`;
+    if (this.config.proxyType === 'datacenter') {
+      host = 'dc.oxylabs.io';
+      port = this.config.port || 8000;
+    } else if (this.config.proxyType === 'residential') {
+      host = 'pr.oxylabs.io';
+      port = this.config.port || 7777;
+    } else {
+      // ISP proxy
+      host = 'isp.oxylabs.io';
+      port = this.config.port || 7777;
+    }
+
+    // Build username with country targeting if needed
+    let username = this.config.username;
+    if (this.config.country && this.config.countryInUsername) {
+      // Add country to username: username-country-XX
+      username = `${username}-country-${this.config.country.toUpperCase()}`;
+      console.log(`Using country targeting in username: ${username}`);
+    }
+    
+    this.proxyUrl = `http://${username}:${this.config.password}@${host}:${port}`;
     
     // Create proxy agent
     this.proxyAgent = new HttpsProxyAgent(this.proxyUrl);
@@ -73,8 +95,8 @@ export class OxylabsProxy {
       // Build headers with Oxylabs-specific options
       const headers = new Headers(options.headers || {});
       
-      // Add country targeting if specified
-      if (this.config.country) {
+      // Add country targeting via header if NOT in username
+      if (this.config.country && !this.config.countryInUsername) {
         headers.set('X-Oxylabs-Country', this.config.country);
       }
 
@@ -128,10 +150,26 @@ export class OxylabsProxy {
    */
   getProxyUrl(): string {
     // Return URL without password for security
-    const host = this.config.proxyType === 'residential' 
-      ? 'pr.oxylabs.io' 
-      : 'isp.oxylabs.io';
-    return `http://${this.config.username}:***@${host}:${this.config.port}`;
+    let host: string;
+    let port: number;
+    
+    if (this.config.proxyType === 'datacenter') {
+      host = 'dc.oxylabs.io';
+      port = this.config.port || 8000;
+    } else if (this.config.proxyType === 'residential') {
+      host = 'pr.oxylabs.io';
+      port = this.config.port || 7777;
+    } else {
+      host = 'isp.oxylabs.io';
+      port = this.config.port || 7777;
+    }
+    
+    let username = this.config.username;
+    if (this.config.country && this.config.countryInUsername) {
+      username = `${username}-country-${this.config.country.toUpperCase()}`;
+    }
+    
+    return `http://${username}:***@${host}:${port}`;
   }
 
   /**
