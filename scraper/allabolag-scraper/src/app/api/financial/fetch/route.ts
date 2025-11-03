@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
 async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
   return withSession(async (session: any) => {
     const buildId = await getBuildId(session);
-    const batchSize = 50;
-    const concurrency = 5; // Increased from 3 to 5 for large scrapes
+    const batchSize = 100; // Increased from 50 for better throughput
+    const concurrency = 40; // Dramatically increased from 5 to 40 for large scrapes
     let totalProcessed = 0;
     let iterationCount = 0;
     const maxIterations = 1000; // Safety limit to prevent infinite loops
@@ -291,8 +291,7 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
         
         console.log(`Processed ${chunkProcessed} companies, total: ${totalProcessed}, financials: ${stats.financials}`);
         
-        // Small delay between chunks
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // No delay - proxy handles rate limiting and we need maximum throughput
       }
       
       // Update stats after each batch

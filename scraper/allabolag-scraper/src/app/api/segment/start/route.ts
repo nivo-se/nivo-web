@@ -100,95 +100,132 @@ async function processSegmentationJob(jobId: string, params: any, localDb: Local
     let totalCompaniesFound = 0;
     const maxPages = 3000;
     const maxEmptyPages = 3;
+    const pagesPerBatch = 20; // Process 20 pages per batch
+    const concurrency = 15; // 15 concurrent page fetches
     
     console.log(`Starting segmentation job ${jobId} with buildId: ${buildId}`);
+    console.log(`Using parallel processing: ${concurrency} concurrent pages per batch`);
     
     while (currentPage <= maxPages) {
       try {
-        console.log(`Processing page ${currentPage} for job ${jobId}`);
+        // Process pages in parallel batches
+        const pageBatch: number[] = [];
+        for (let page = currentPage; page < Math.min(currentPage + pagesPerBatch, maxPages + 1); page++) {
+          pageBatch.push(page);
+        }
         
-        const response = await fetchSegmentationPage(buildId, {
-          ...params,
-          page: currentPage,
-        }, session);
-      
-      const companies = response?.pageProps?.companies || [];
-      console.log(`Page ${currentPage}: Found ${companies.length} companies`);
-      
-      if (companies.length === 0) {
-        emptyPages++;
-        console.log(`Empty page ${currentPage}, count: ${emptyPages}`);
+        console.log(`Processing pages ${pageBatch[0]}-${pageBatch[pageBatch.length - 1]} in parallel (${pageBatch.length} pages)`);
         
+        // Process pages in chunks with controlled concurrency
+        const chunks: number[][] = [];
+        for (let i = 0; i < pageBatch.length; i += concurrency) {
+          chunks.push(pageBatch.slice(i, i + concurrency));
+        }
+        
+        let batchEmptyPages = 0;
+        let batchCompaniesFound = 0;
+        
+        for (const chunk of chunks) {
+          // Process pages concurrently within chunk
+          const promises = chunk.map(async (pageNum: number) => {
+            try {
+              console.log(`Fetching page ${pageNum}...`);
+              const response = await fetchSegmentationPage(buildId, {
+                ...params,
+                page: pageNum,
+              }, session);
+              
+              const companies = response?.pageProps?.companies || [];
+              console.log(`Page ${pageNum}: Found ${companies.length} companies`);
+              
+              return { pageNum, companies, isEmpty: companies.length === 0 };
+            } catch (error: any) {
+              console.error(`Error fetching page ${pageNum}:`, error);
+              // Check if it's a proxy error - stop job
+              if (error.message?.includes('Oxylabs proxy') || error.message?.includes('proxy')) {
+                throw new Error(`Proxy error on page ${pageNum}: ${error.message}`);
+              }
+              return { pageNum, companies: [], isEmpty: true, error: error.message };
+            }
+          });
+          
+          const results = await Promise.all(promises);
+          
+          // Process results
+          for (const result of results) {
+            if (result.error && result.error.includes('proxy')) {
+              throw new Error(result.error);
+            }
+            
+            if (result.isEmpty) {
+              batchEmptyPages++;
+            } else {
+              batchEmptyPages = 0; // Reset counter on non-empty page
+              batchCompaniesFound += result.companies.length;
+              
+              // Process and insert companies into local database
+              const companiesToInsert = [];
+              
+              for (const company of result.companies) {
+                const normalized = normalizeCompany(company);
+                
+                if (!normalized.orgnr) {
+                  console.warn('Skipping company without orgnr:', company);
+                  continue;
+                }
+                
+                companiesToInsert.push({
+                  orgnr: normalized.orgnr,
+                  companyName: normalized.companyName,
+                  companyId: normalized.companyId,
+                  companyIdHint: normalized.companyIdHint,
+                  homepage: normalized.homepage,
+                  naceCategories: normalized.naceCategories,
+                  segmentName: normalized.segmentName,
+                  revenueSek: normalized.revenueSek,
+                  profitSek: normalized.profitSek,
+                  foundationYear: normalized.foundationYear,
+                  companyAccountsLastYear: normalized.companyAccountsLastYear,
+                  scrapedAt: new Date().toISOString(),
+                  jobId: jobId,
+                  status: 'pending',
+                  updatedAt: new Date().toISOString()
+                });
+              }
+              
+              // Insert companies in batch
+              if (companiesToInsert.length > 0) {
+                localDb.insertCompanies(companiesToInsert as StagingCompany[]);
+              }
+            }
+          }
+          
+          // Check if we've hit too many empty pages
+          if (batchEmptyPages >= maxEmptyPages) {
+            console.log(`Reached ${maxEmptyPages} empty pages in batch, stopping`);
+            emptyPages = batchEmptyPages;
+            break;
+          }
+        }
+        
+        totalCompaniesFound += batchCompaniesFound;
+        emptyPages = batchEmptyPages;
+        currentPage = pageBatch[pageBatch.length - 1] + 1;
+        
+        // Update job progress
+        localDb.updateJob(jobId, {
+          lastPage: currentPage - 1,
+          processedCount: totalCompaniesFound,
+          totalCompanies: totalCompaniesFound
+        });
+        
+        console.log(`Job ${jobId} progress: Page ${currentPage - 1}, Total companies found: ${totalCompaniesFound}`);
+        
+        // Stop if we hit too many empty pages
         if (emptyPages >= maxEmptyPages) {
           console.log(`Reached ${maxEmptyPages} empty pages, stopping`);
           break;
         }
-      } else {
-        emptyPages = 0; // Reset counter on non-empty page
-        totalCompaniesFound += companies.length; // Accumulate total companies
-        
-        // Process and insert companies into local database (skip duplicates)
-        const companiesToInsert = [];
-        let duplicatesSkipped = 0;
-        
-        for (const company of companies) {
-          const normalized = normalizeCompany(company);
-          
-          if (!normalized.orgnr) {
-            console.warn('Skipping company without orgnr:', company);
-            continue;
-          }
-          
-          // Note: Duplicate checking is handled by the local staging database
-          
-          companiesToInsert.push({
-            orgnr: normalized.orgnr,
-            companyName: normalized.companyName,
-            companyId: normalized.companyId,
-            companyIdHint: normalized.companyIdHint,
-            homepage: normalized.homepage,
-            naceCategories: normalized.naceCategories,
-            segmentName: normalized.segmentName,
-            revenueSek: normalized.revenueSek,
-            profitSek: normalized.profitSek,
-            foundationYear: normalized.foundationYear,
-            companyAccountsLastYear: normalized.companyAccountsLastYear,
-            scrapedAt: new Date().toISOString(),
-            jobId: jobId,
-            status: 'pending',
-            updatedAt: new Date().toISOString()
-          });
-        }
-        
-        if (duplicatesSkipped > 0) {
-          console.log(`Page ${currentPage}: Skipped ${duplicatesSkipped} duplicate companies`);
-        }
-        
-        // Insert companies in batch
-        if (companiesToInsert.length > 0) {
-          localDb.insertCompanies(companiesToInsert as StagingCompany[]);
-        }
-      }
-      
-      // Update job progress
-      localDb.updateJob(jobId, {
-        lastPage: currentPage,
-        processedCount: totalCompaniesFound,
-        totalCompanies: totalCompaniesFound
-      });
-      
-      console.log(`Job ${jobId} progress: Page ${currentPage}, Total companies found: ${totalCompaniesFound}`);
-      
-      // Log first two orgnrs for debugging
-      if (companies.length > 0) {
-        const firstTwoOrgnrs = companies.slice(0, 2).map((c: any) => c.organisationNumber);
-        console.log(`Page ${currentPage} first two orgnrs:`, firstTwoOrgnrs);
-      }
-      
-      currentPage++;
-      
-      // Small delay to be respectful
-      await new Promise(resolve => setTimeout(resolve, 100));
       
     } catch (error: any) {
       console.error(`❌ Error processing page ${currentPage}:`, error);

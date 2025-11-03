@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
 async function processEnrichmentJob(jobId: string, localDb: LocalStagingDB) {
   return withSession(async (session) => {
     const buildId = await getBuildId(session);
-    const batchSize = 50; // Batch size for processing
-    const concurrency = 10; // Concurrent requests per batch
+    const batchSize = 100; // Increased from 50 for better throughput
+    const concurrency = 25; // Increased from 10 to 25 for large scrapes
     let processedCount = 0;
     
     console.log(`Starting Stage 2 enrichment for job ${jobId} with buildId: ${buildId}`);
@@ -180,8 +180,7 @@ async function processEnrichmentJob(jobId: string, localDb: LocalStagingDB) {
           processedCount: processedCount
         });
         
-        // Small delay between chunks to avoid overwhelming the proxy
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // No delay - proxy handles rate limiting
       }
   }
   
