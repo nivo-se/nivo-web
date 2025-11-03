@@ -65,7 +65,15 @@ export class OxylabsProxy {
       console.log(`Using country targeting in username: ${username}`);
     }
     
-    this.proxyUrl = `http://${username}:${this.config.password}@${host}:${port}`;
+    // URL encode username and password to handle special characters (like +)
+    const encodedUsername = encodeURIComponent(username);
+    const encodedPassword = encodeURIComponent(this.config.password);
+    
+    this.proxyUrl = `http://${encodedUsername}:${encodedPassword}@${host}:${port}`;
+    
+    console.log(`Proxy URL (masked): http://${encodedUsername}:***@${host}:${port}`);
+    console.log(`Password length: ${this.config.password.length}`);
+    console.log(`Password contains special chars: ${/[+@#%&]/.test(this.config.password)}`);
     
     // Create proxy agent
     this.proxyAgent = new HttpsProxyAgent(this.proxyUrl);
