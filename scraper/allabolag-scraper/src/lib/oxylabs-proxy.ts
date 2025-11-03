@@ -91,9 +91,9 @@ export class OxylabsProxy {
    * Make a request through Oxylabs proxy
    */
   async fetch(url: string, options: RequestInit = {}): Promise<Response> {
+    // CRITICAL: If proxy is enabled, it MUST be used - NO fallback
     if (!this.config.enabled) {
-      // Fallback to regular fetch if proxy is disabled
-      return fetch(url, options);
+      throw new Error('Oxylabs proxy is disabled but required. Set OXYLABS_ENABLED=true and provide credentials. Scraping stopped.');
     }
 
     this.stats.totalRequests++;
@@ -246,9 +246,15 @@ export async function fetchWithOxylabs(url: string, options: RequestInit = {}): 
     return await oxylabsProxyInstance.fetch(url, options);
   }
   
-  // Fallback to regular fetch if proxy not initialized
-  console.warn('⚠️  Oxylabs proxy not initialized, using regular fetch');
-  return fetch(url, options);
+  // CRITICAL: NO fallback - proxy is REQUIRED
+  // If proxy is not initialized but OXYLABS_ENABLED=true, this is an error
+  const config = await import('./oxylabs-config').then(m => m.loadOxylabsConfig());
+  if (config && config.enabled) {
+    throw new Error('Oxylabs proxy is required but not initialized. Please check your OXYLABS_USERNAME and OXYLABS_PASSWORD. Scraping stopped.');
+  }
+  
+  // Only allow fallback if proxy is explicitly disabled
+  throw new Error('Oxylabs proxy is required. Set OXYLABS_ENABLED=true and provide credentials. Scraping stopped.');
 }
 
 /**
