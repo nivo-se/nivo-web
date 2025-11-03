@@ -223,9 +223,21 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
               return { processed: true, financialsCount: 0 };
             }
             
-          } catch (error: unknown) {
-            console.error(`Error fetching financials for company ${companyIdRecord.company_id}:`, error);
+          } catch (error: any) {
+            console.error(`❌ Error fetching financials for company ${companyIdRecord.company_id}:`, error);
             const message = error instanceof Error ? error.message : 'Unknown error';
+            
+            // Check if it's a proxy error - stop job
+            if (error.message?.includes('Oxylabs proxy') || error.message?.includes('proxy')) {
+              console.error('❌ Proxy error detected - stopping job');
+              localDb.updateJob(jobId, {
+                status: 'error',
+                lastError: `Proxy error: ${error.message}`,
+                updatedAt: new Date().toISOString()
+              });
+              throw new Error(`Proxy error: ${error.message}. Job stopped. Fix proxy and resume job.`);
+            }
+            
             localDb.updateCompanyIdStatus(jobId, companyIdRecord.orgnr, 'error', message);
             return { processed: true, financialsCount: 0 };
           }

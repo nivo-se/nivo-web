@@ -190,8 +190,26 @@ async function processSegmentationJob(jobId: string, params: any, localDb: Local
       // Small delay to be respectful
       await new Promise(resolve => setTimeout(resolve, 100));
       
-    } catch (error) {
-      console.error(`Error processing page ${currentPage}:`, error);
+    } catch (error: any) {
+      console.error(`❌ Error processing page ${currentPage}:`, error);
+      
+      // Check if it's a proxy error - stop job and mark as error
+      if (error.message?.includes('Oxylabs proxy') || error.message?.includes('proxy')) {
+        console.error('❌ Proxy error detected - stopping job');
+        localDb.updateJob(jobId, {
+          status: 'error',
+          lastError: `Proxy error on page ${currentPage}: ${error.message}`,
+          updatedAt: new Date().toISOString()
+        });
+        throw new Error(`Proxy error: ${error.message}. Job stopped. Fix proxy and resume from page ${currentPage}.`);
+      }
+      
+      // For other errors, also stop but allow retry
+      localDb.updateJob(jobId, {
+        status: 'error',
+        lastError: `Error on page ${currentPage}: ${error.message}`,
+        updatedAt: new Date().toISOString()
+      });
       throw error;
     }
   }
