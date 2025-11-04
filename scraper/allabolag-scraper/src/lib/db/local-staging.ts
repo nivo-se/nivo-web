@@ -431,6 +431,14 @@ export class LocalStagingDB {
     return results;
   }
 
+  getCompanyIdByOrgnr(jobId: string, orgnr: string): any | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM staging_company_ids WHERE job_id = ? AND orgnr = ?
+    `);
+    const row = stmt.get(jobId, orgnr);
+    return row || null;
+  }
+
   getCompanyIdsToProcess(jobId: string, status: string): any[] {
     const stmt = this.db.prepare(`
       SELECT * FROM staging_company_ids WHERE job_id = ? AND status = ?
@@ -663,7 +671,7 @@ export class LocalStagingDB {
 
   getFinancialsByOrgnr(jobId: string, orgnr: string): any[] {
     const stmt = this.db.prepare(`
-      SELECT 
+      SELECT
         year,
         period,
         period_start,
@@ -708,6 +716,28 @@ export class LocalStagingDB {
         fk: parsedRawData.fk || null    // Debt
       };
     });
+  }
+
+  getFinancialRecordsWithRawData(jobId: string, orgnr: string): any[] {
+    const stmt = this.db.prepare(`
+      SELECT
+        year,
+        period,
+        period_start,
+        period_end,
+        currency,
+        revenue,
+        profit,
+        employees,
+        be,
+        tr,
+        raw_data
+      FROM staging_financials
+      WHERE job_id = ? AND orgnr = ?
+      ORDER BY year DESC, period DESC
+    `);
+
+    return stmt.all(jobId, orgnr) as any[];
   }
 
   getFinancialYearsForJob(jobId: string): { year: number }[] {

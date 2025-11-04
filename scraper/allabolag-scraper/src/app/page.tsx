@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import SessionModal from './components/SessionModal';
 
 interface Job {
@@ -1798,12 +1799,22 @@ export default function Home() {
                                       {formatYearBadges(company.stage3Data?.years || [])}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                      <button
-                                        onClick={() => toggleRowExpansion(company.orgnr)}
-                                        className="text-blue-600 hover:text-blue-900"
-                                      >
-                                        {isExpanded ? 'Hide Details' : 'Show Details'}
-                                      </button>
+                                      <div className="flex items-center gap-3">
+                                        {company.stage3Data?.recordCount > 0 && currentJob?.id && (
+                                          <Link
+                                            href={`/bokslut/${company.orgnr}?jobId=${currentJob.id}`}
+                                            className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-100"
+                                          >
+                                            View Bokslut
+                                          </Link>
+                                        )}
+                                        <button
+                                          onClick={() => toggleRowExpansion(company.orgnr)}
+                                          className="text-blue-600 hover:text-blue-900"
+                                        >
+                                          {isExpanded ? 'Hide Details' : 'Show Details'}
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                   
