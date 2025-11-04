@@ -593,7 +593,6 @@ async function invokeScreeningModel(openai: OpenAI, prompt: string) {
       { role: 'system', content: [{ type: 'text', text: screeningSystemPrompt }] },
       { role: 'user', content: [{ type: 'text', text: prompt }] },
     ],
-    response_format: { type: 'json_schema', json_schema: screeningSchema },
   })
   const latency = Date.now() - started
 
@@ -916,7 +915,6 @@ async function invokeDeepAnalysisModel(openai: OpenAI, prompt: string) {
       { role: 'system', content: [{ type: 'text', text: deepAnalysisSystemPrompt }] },
       { role: 'user', content: [{ type: 'text', text: prompt }] },
     ],
-    response_format: { type: 'json_schema', json_schema: deepAnalysisSchema },
   })
   const latency = Date.now() - started
 
@@ -1641,7 +1639,9 @@ När du analyserar ska du:
 - Lyfta fram konkreta risker och uppsidor, alltid kopplade till siffror i underlaget.
 - Vara tydlig när något baseras på antaganden och ange hur det kan verifieras.
 
-Utdata måste följa det specificerade JSON-schemat utan extra text.`
+Utdata måste följa det specificerade JSON-schemat utan extra text. Svara endast med
+ett enda giltigt JSON-objekt och lägg inte till markdown, kommentarer eller annan
+frivillig text.`
 
 const screeningSystemPrompt = `You are a rapid M&A screening analyst. For each company, provide:
 1. Screening Score (1-100): Based on financial health, growth trajectory, and market position
@@ -1651,7 +1651,9 @@ const screeningSystemPrompt = `You are a rapid M&A screening analyst. For each c
 Focus on: Revenue trends, profitability, debt levels, growth consistency.
 Use available financial data (4 years history). Flag missing critical data.
 
-Be concise and direct. Prioritize red flags and high-potential opportunities.`
+Return a compact JSON object containing the keys "orgnr", "screening_score",
+"risk_flag", and "brief_summary". Do not include markdown fences or any prose
+before or after the JSON payload.`
 
 // Export functions for use in development server
 export { handlePost, handleGet }

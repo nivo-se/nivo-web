@@ -532,7 +532,6 @@ async function invokeScreeningModel(openai: OpenAI, prompt: string) {
       { role: 'system', content: [{ type: 'input_text', text: screeningSystemPrompt }] },
       { role: 'user', content: [{ type: 'input_text', text: prompt }] },
     ],
-    response_format: { type: 'json_schema', json_schema: screeningSchema },
   })
   const latency = Date.now() - started
 
@@ -1132,7 +1131,6 @@ async function invokeModel(openai: OpenAI, prompt: string) {
       { role: 'system', content: defaultSystemPrompt },
       { role: 'user', content: prompt },
     ],
-    response_format: { type: 'json_schema', json_schema: analysisSchema },
   })
   const latency = Date.now() - started
 
@@ -1481,8 +1479,11 @@ Assess each target's financial health, commercial opportunity, and post-acquisit
 value creation levers. Incorporate any engineered insights such as risk flags or
 segment information when relevant.
 
-Respond in professional English even if source data is Swedish. If information is
-missing, acknowledge the gap explicitly and infer carefully using comparable metrics.`
+Always respond with a single valid JSON object that strictly matches the schema
+communicated in the user request. Do not include markdown, commentary, or any
+additional text outside of the JSON structure. Respond in professional English even
+if source data is Swedish. If information is missing, acknowledge the gap explicitly
+and infer carefully using comparable metrics.`
 
 const screeningSystemPrompt = `You are a rapid M&A screening analyst. For each company, provide:
 1. Screening Score (1-100): Based on financial health, growth trajectory, and market position
@@ -1492,7 +1493,9 @@ const screeningSystemPrompt = `You are a rapid M&A screening analyst. For each c
 Focus on: Revenue trends, profitability, debt levels, growth consistency.
 Use available financial data (4 years history). Flag missing critical data.
 
-Be concise and direct. Prioritize red flags and high-potential opportunities.`
+Return a compact JSON object with keys "screening_score", "risk_flag", and
+"brief_summary" that satisfies the requested schema. Do not wrap the JSON in
+markdown code fences or include any prose before or after the JSON.`
 
 // Export functions for use in development server
 export { handlePost, handleGet }
