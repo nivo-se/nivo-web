@@ -105,7 +105,7 @@ interface ValidationData {
       recordCount: number;
       validationStatus: string;
       financials?: Array<{
-        year: number;
+      year: number;
         period: string;
         periodStart: string | null;
         periodEnd: string | null;
@@ -404,18 +404,18 @@ export default function Home() {
               : null;
             
             // Update job state with latest progress
-            setCurrentJob(prev => prev ? {
-              ...prev,
+              setCurrentJob(prev => prev ? {
+                ...prev,
               stage: mappedJob.stage || 'stage3_financials',
               status: mappedJob.status,
               processedCount: currentProcessedCount,
-              totalCompanies: mappedJob.totalCompanies,
+                totalCompanies: mappedJob.totalCompanies,
               errorCount: mappedJob.errorCount,
               error: mappedJob.lastError,
               // Add progress rate info for display
               progressRate: parseFloat(progressRate),
               estimatedTimeRemaining: estimatedTimeRemaining || undefined
-            } : null);
+              } : null);
             
             // Check final status
             if (job.status === 'done' || job.status === 'completed') {
@@ -1234,8 +1234,8 @@ export default function Home() {
                     {currentJob.status === 'running' && (
                       <div className="w-full bg-blue-100 text-blue-800 py-3 px-4 rounded-md">
                         <div className="text-center font-medium mb-2">
-                          {getStageDisplayName(currentJob.stage)} in progress...
-                        </div>
+                        {getStageDisplayName(currentJob.stage)} in progress...
+                      </div>
                         <div className="text-sm space-y-1">
                           <div className="flex justify-between">
                             <span>Progress:</span>
@@ -1905,7 +1905,7 @@ export default function Home() {
                                                         <td className="py-2 text-right text-gray-900 font-medium">{yearData?.rg || yearData?.ors ? formatCurrency(yearData.rg || yearData.ors) : <span className="text-gray-400">N/A</span>}</td>
                                                         <td className="py-2 text-right text-gray-900 font-medium">{yearData?.ek ? formatCurrency(yearData.ek) : <span className="text-gray-400">N/A</span>}</td>
                                                         <td className="py-2 text-right text-gray-900 font-medium">{yearData?.fk ? formatCurrency(yearData.fk) : <span className="text-gray-400">N/A</span>}</td>
-                                                      </tr>
+                                                    </tr>
                                                     );
                                                   })}
                                                 </tbody>

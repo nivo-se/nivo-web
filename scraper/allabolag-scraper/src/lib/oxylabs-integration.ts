@@ -78,6 +78,16 @@ export async function fetchWithOxylabsProxy(
       throw new Error('Oxylabs proxy authentication failed (407). Please check your OXYLABS_USERNAME and OXYLABS_PASSWORD. Scraping stopped. Fix credentials and resume job.');
     }
     
+    // On 429 (Rate Limit) - proxy rotation will handle this, but if all proxies are rate-limited, stop
+    if (error.message?.includes('429') || error.message?.includes('Too Many Requests') || error.status === 429) {
+      // If error mentions "both ports" or "all proxies", all proxies are rate-limited
+      if (error.message?.includes('both ports') || error.message?.includes('all proxies') || error.message?.includes('all ports')) {
+        throw new Error('Oxylabs proxy rate limit (429) - all proxies are rate-limited. Please wait and resume job later.');
+      }
+      // Otherwise, proxy rotation should have handled it - this shouldn't happen
+      throw new Error(`Oxylabs proxy rate limit (429). Proxy rotation should have handled this. If this persists, wait and resume job.`);
+    }
+    
     // On 502 (Bad Gateway) or 525 (No Exit Found) - retry once, then fail
     if (error.message?.includes('502') || error.message?.includes('525') || error.status === 502 || error.status === 525) {
       console.log('🔄 Retrying with Oxylabs proxy after transient error...');

@@ -223,10 +223,10 @@ export default function SessionModal({ isOpen, onClose, onSessionSelect }: Sessi
                           
                           {/* Simple Progress Info */}
                           <div className="flex items-center gap-4 text-xs text-gray-600">
-                            <span>{session.totalCompanies} companies</span>
+             <span>{session.totalCompanies} companies</span>
                             <span>•</span>
                             <span>{session.totalFinancials > 0 ? `${session.totalFinancials} financial records` : 'No financials yet'}</span>
-                          </div>
+         </div>
                         </div>
                         <div className="flex items-center gap-2">
                           {getStatusBadge(session.status)}
@@ -244,7 +244,7 @@ export default function SessionModal({ isOpen, onClose, onSessionSelect }: Sessi
                             <span className="text-xs text-gray-600">
                               {session.stages?.stage1?.status === 'completed' ? 'Completed' :
                                session.stages?.stage1?.status === 'running' ? 'Running' : 'Pending'}
-                            </span>
+                          </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={`w-2 h-2 rounded-full ${
@@ -255,7 +255,7 @@ export default function SessionModal({ isOpen, onClose, onSessionSelect }: Sessi
                             <span className="text-xs text-gray-600">
                               {session.stages?.stage2?.status === 'completed' ? 'Completed' :
                                session.stages?.stage2?.status === 'running' ? 'Running' : 'Pending'}
-                            </span>
+                          </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={`w-2 h-2 rounded-full ${
@@ -266,8 +266,8 @@ export default function SessionModal({ isOpen, onClose, onSessionSelect }: Sessi
                             <span className="text-xs text-gray-600">
                               {session.stages?.stage3?.status === 'completed' ? 'Completed' :
                                session.stages?.stage3?.status === 'running' ? 'Running' : 'Pending'}
-                            </span>
-                          </div>
+                          </span>
+                        </div>
                         </div>
                       </div>
                     </div>

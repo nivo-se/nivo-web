@@ -46,36 +46,65 @@ export async function POST(request: NextRequest) {
     const hash = filterHash(params);
     console.log('Filter hash:', hash);
     
-    // Create new job
-    const jobId = uuidv4();
-    console.log('Job ID:', jobId);
+    // Check if jobId is provided for resume, otherwise create new
+    const providedJobId = body.jobId;
+    let jobId: string;
+    
+    if (providedJobId) {
+      // Resume existing job
+      jobId = providedJobId;
+      console.log(`Resuming existing job: ${jobId}`);
+    } else {
+      // Create new job
+      jobId = uuidv4();
+      console.log(`Creating new job: ${jobId}`);
+    }
     
     const localDb = new LocalStagingDB(jobId);
     console.log('Local database created');
     
-    // Check if job already exists and is running
+    // Check if job already exists
     const existingJob = localDb.getJob(jobId);
-    if (existingJob && existingJob.status === 'running') {
-      return NextResponse.json({ 
-        jobId: existingJob.id,
-        message: 'Job already running' 
-      });
+    if (existingJob) {
+      // If job is already running, don't start another one
+      if (existingJob.status === 'running') {
+        return NextResponse.json({ 
+          jobId: existingJob.id,
+          message: 'Job already running' 
+        });
+      }
+      // If job is done or error, we can resume it
+      // The processSegmentationJob will handle resuming from lastPage
+      console.log(`Resuming existing job ${jobId} from page ${existingJob.lastPage || 0}`);
     }
     
-    // Create new job in local database
+    // Create or update job in local database
     const now = new Date().toISOString();
-    console.log('Inserting job into local database...');
-    localDb.insertJob({
-      id: jobId,
-      jobType: 'segmentation',
-      filterHash: hash,
-      params: params,
-      status: 'running',
-      stage: 'stage1_segmentation',
-      createdAt: now,
-      updatedAt: now
-    });
-    console.log('Job inserted successfully');
+    
+    if (existingJob) {
+      // Update existing job to resume
+      console.log(`Updating existing job ${jobId} to resume...`);
+      localDb.updateJob(jobId, {
+        status: 'running',
+        stage: 'stage1_segmentation',
+        updatedAt: now
+      });
+      console.log('Job updated for resume');
+    } else {
+      // Create new job
+      console.log('Inserting new job into local database...');
+      localDb.insertJob({
+        id: jobId,
+        jobType: 'segmentation',
+        filterHash: hash,
+        params: params,
+        status: 'running',
+        stage: 'stage1_segmentation',
+        createdAt: now,
+        updatedAt: now
+      });
+      console.log('Job inserted successfully');
+    }
     
     // Start processing in background
     processSegmentationJob(jobId, scraperParams, localDb).catch(async (error) => {
@@ -104,13 +133,47 @@ export async function POST(request: NextRequest) {
 async function processSegmentationJob(jobId: string, params: any, localDb: LocalStagingDB) {
   return withSession(async (session) => {
     const buildId = await getBuildId(session);
+    
+    // Check if this is a resume - get existing job info
+    const existingJob = localDb.getJob(jobId);
+    const existingStats = localDb.getJobStats(jobId);
+    
+    // Resume from last page if job already exists
     let currentPage = 1;
-    let emptyPages = 0;
     let totalCompaniesFound = 0;
+    
+    if (existingJob && existingJob.lastPage) {
+      // Resume from where we left off
+      currentPage = existingJob.lastPage + 1;
+      totalCompaniesFound = existingStats.companies || 0;
+      console.log(`🔄 Resuming job ${jobId} from page ${currentPage} (had ${totalCompaniesFound} companies)`);
+    } else {
+      console.log(`🆕 Starting new job ${jobId} from page 1`);
+    }
+    
+    let emptyPages = 0;
     const maxPages = 3000;
-    const maxEmptyPages = 3;
+    const maxEmptyPages = 100; // Increased to 100 - Allabolag has many intermittent empty pages after page 1000
     const pagesPerBatch = 20; // Process 20 pages per batch
-    const concurrency = 15; // 15 concurrent page fetches
+    const concurrency = 10; // Reduced to 10 to stay well under 20 concurrent session limit
+    
+    // Try to get exact count from first page to know when to stop
+    let expectedTotalCount: number | null = null;
+    try {
+      const firstPageResponse = await fetchSegmentationPage(buildId, {
+        ...params,
+        page: 1,
+      }, session);
+      expectedTotalCount = firstPageResponse?.pageProps?.numberOfHits || 
+                           firstPageResponse?.pageProps?.pagination?.total ||
+                           firstPageResponse?.pageProps?.total ||
+                           null;
+      if (expectedTotalCount) {
+        console.log(`📊 Expected total count from API: ${expectedTotalCount} companies`);
+      }
+    } catch (error) {
+      console.warn('Could not fetch expected count from first page:', error);
+    }
     
     console.log(`Starting segmentation job ${jobId} with buildId: ${buildId}`);
     console.log(`Using parallel processing: ${concurrency} concurrent pages per batch`);
@@ -159,6 +222,10 @@ async function processSegmentationJob(jobId: string, params: any, localDb: Local
           });
           
           const results = await Promise.all(promises);
+          
+          // Add delay after each chunk to respect rate limits (1 second delay between chunks)
+          // This ensures we don't exceed request rate limits even with concurrent sessions
+          await new Promise(resolve => setTimeout(resolve, 1000));
           
           // Process results
           for (const result of results) {
@@ -231,8 +298,19 @@ async function processSegmentationJob(jobId: string, params: any, localDb: Local
         console.log(`Job ${jobId} progress: Page ${currentPage - 1}, Total companies found: ${totalCompaniesFound}`);
         
         // Stop if we hit too many empty pages
-        if (emptyPages >= maxEmptyPages) {
+        // BUT: If we have expected count and we're close (< 5% away), continue
+        // OR: If we're still far from expected count, reduce tolerance
+        const shouldStop = emptyPages >= maxEmptyPages;
+        const isCloseToTarget = expectedTotalCount && 
+          totalCompaniesFound > 0 && 
+          (totalCompaniesFound / expectedTotalCount) >= 0.95; // 95% of expected count
+        
+        if (shouldStop && !isCloseToTarget) {
           console.log(`Reached ${maxEmptyPages} empty pages, stopping`);
+          console.log(`Found ${totalCompaniesFound} companies (expected: ${expectedTotalCount || 'unknown'})`);
+          break;
+        } else if (shouldStop && isCloseToTarget) {
+          console.log(`Reached ${maxEmptyPages} empty pages but we're at ${((totalCompaniesFound / expectedTotalCount!) * 100).toFixed(1)}% of expected count - stopping`);
           break;
         }
       

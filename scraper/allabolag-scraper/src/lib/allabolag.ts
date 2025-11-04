@@ -13,9 +13,9 @@ export async function getAllabolagSession(): Promise<AllabolagSession> {
   console.log('🔐 Fetching new Allabolag session...');
   
   try {
-    // Use Oxylabs proxy - REQUIRED, no fallback
-    const { fetchWithOxylabsProxy } = await import('./oxylabs-integration');
-    const response = await fetchWithOxylabsProxy('https://www.allabolag.se/', {
+    // Use unified proxy (Oxylabs or ProxyScrape) - REQUIRED, no fallback
+    const { fetchWithProxy } = await import('./unified-proxy');
+    const response = await fetchWithProxy('https://www.allabolag.se/', {
       method: 'GET',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -115,8 +115,8 @@ export async function withSession<T>(fn: (session: AllabolagSession) => Promise<
 
 export async function getBuildId(session?: AllabolagSession): Promise<string> {
   return withRetry(async () => {
-    // Use Oxylabs proxy for all requests
-    const { fetchWithOxylabsProxy } = await import('./oxylabs-integration');
+    // Use unified proxy (Oxylabs or ProxyScrape) for all requests
+    const { fetchWithProxy } = await import('./unified-proxy');
     
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -127,7 +127,7 @@ export async function getBuildId(session?: AllabolagSession): Promise<string> {
       headers['X-Request-Verification-Token'] = session.token;
     }
     
-    const response = await fetchWithOxylabsProxy('https://www.allabolag.se/segmentering', { headers });
+    const response = await fetchWithProxy('https://www.allabolag.se/segmentering', { headers });
     
     if (!response.ok) {
       throw new Error(`Failed to fetch segmentering page: ${response.status}`);
@@ -196,8 +196,8 @@ export async function fetchSegmentationPage(
   const url = `https://www.allabolag.se/_next/data/${buildId}/segmentation.json?${searchParams}`;
   
   return withRetry(async () => {
-    // Use Oxylabs proxy for all requests
-    const { fetchWithOxylabsProxy } = await import('./oxylabs-integration');
+    // Use unified proxy (Oxylabs or ProxyScrape) for all requests
+    const { fetchWithProxy } = await import('./unified-proxy');
     
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -211,7 +211,7 @@ export async function fetchSegmentationPage(
       headers['X-Request-Verification-Token'] = session.token;
     }
     
-    const response = await fetchWithOxylabsProxy(url, { headers });
+    const response = await fetchWithProxy(url, { headers });
     
     if (!response.ok) {
       throw new Error(`Failed to fetch segmentation page: ${response.status} ${response.statusText}`);
@@ -235,8 +235,8 @@ export async function fetchSearchPage(
   try {
     console.log(`Trying HTML search for: ${query}`);
     
-    // Use Oxylabs proxy for all requests
-    const { fetchWithOxylabsProxy } = await import('./oxylabs-integration');
+    // Use unified proxy (Oxylabs or ProxyScrape) for all requests
+    const { fetchWithProxy } = await import('./unified-proxy');
     
     const htmlUrl = `https://www.allabolag.se/bransch-sok?${searchParams}`;
     const headers: Record<string, string> = {
@@ -251,7 +251,7 @@ export async function fetchSearchPage(
       headers['X-Request-Verification-Token'] = session.token;
     }
     
-    const response = await fetchWithOxylabsProxy(htmlUrl, { headers });
+    const response = await fetchWithProxy(htmlUrl, { headers });
     
     if (response.ok) {
       const html = await response.text();
@@ -299,8 +299,8 @@ export async function fetchSearchPage(
     `https://www.allabolag.se/_next/data/${buildId}/sok.json?${searchParams}`
   ];
   
-  // Use Oxylabs proxy for all requests
-  const { fetchWithOxylabsProxy } = await import('./oxylabs-integration');
+  // Use unified proxy (Oxylabs or ProxyScrape) for all requests
+  const { fetchWithProxy } = await import('./unified-proxy');
   
   for (const url of searchUrls) {
     try {
@@ -317,7 +317,7 @@ export async function fetchSearchPage(
         headers['X-Request-Verification-Token'] = session.token;
       }
       
-      const response = await fetchWithOxylabsProxy(url, { headers });
+      const response = await fetchWithProxy(url, { headers });
       
       if (response.ok) {
         const data = await response.json();
@@ -384,8 +384,8 @@ export async function fetchFinancialData(
   try {
     console.log(`Fetching financial data from: ${url}`);
     
-    // Use Oxylabs proxy for all requests
-    const { fetchWithOxylabsProxy } = await import('./oxylabs-integration');
+    // Use unified proxy (Oxylabs or ProxyScrape) for all requests
+    const { fetchWithProxy } = await import('./unified-proxy');
     
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -399,7 +399,7 @@ export async function fetchFinancialData(
       headers['X-Request-Verification-Token'] = session.token;
     }
     
-    const response = await fetchWithOxylabsProxy(url, { headers });
+    const response = await fetchWithProxy(url, { headers });
     
     if (!response.ok) {
       if (response.status === 404) {

@@ -24,6 +24,13 @@ export function loadOxylabsConfig(): OxylabsConfig | null {
     return null;
   }
 
+  // Parse ports - support comma-separated list or single port
+  let ports: number | number[] = parseInt(process.env.OXYLABS_PORT || '8000', 10);
+  if (process.env.OXYLABS_PORTS) {
+    // Multiple ports specified (comma-separated)
+    ports = process.env.OXYLABS_PORTS.split(',').map(p => parseInt(p.trim(), 10)).filter(p => !isNaN(p));
+  }
+
   const config: OxylabsConfig = {
     enabled: true,
     username,
@@ -31,7 +38,7 @@ export function loadOxylabsConfig(): OxylabsConfig | null {
     proxyType: (process.env.OXYLABS_PROXY_TYPE as 'residential' | 'isp' | 'datacenter') || 'datacenter',
     country: process.env.OXYLABS_COUNTRY || 'us', // Default: 'us' for United States, can be 'se' for Sweden, etc.
     sessionType: (process.env.OXYLABS_SESSION_TYPE as 'rotate' | 'sticky') || 'rotate',
-    port: parseInt(process.env.OXYLABS_PORT || '8000', 10), // Default 8000 for datacenter
+    port: ports, // Single port or array of ports for rotation
     countryInUsername: process.env.OXYLABS_COUNTRY_IN_USERNAME === 'true' // If true, country in username format
   };
 

@@ -56,7 +56,7 @@ async function processEnrichmentJob(jobId: string, localDb: LocalStagingDB) {
   return withSession(async (session) => {
     const buildId = await getBuildId(session);
     const batchSize = 100; // Increased from 50 for better throughput
-    const concurrency = 25; // Increased from 10 to 25 for large scrapes
+    const concurrency = 20; // Limited to 20 to stay within free plan's concurrent session limit
     let processedCount = 0;
     
     console.log(`Starting Stage 2 enrichment for job ${jobId} with buildId: ${buildId}`);

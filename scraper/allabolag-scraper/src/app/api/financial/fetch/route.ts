@@ -58,7 +58,7 @@ async function processFinancialJob(jobId: string, localDb: LocalStagingDB) {
   return withSession(async (session: any) => {
     const buildId = await getBuildId(session);
     const batchSize = 100; // Increased from 50 for better throughput
-    const concurrency = 40; // Dramatically increased from 5 to 40 for large scrapes
+    const concurrency = 20; // Limited to 20 to stay within free plan's concurrent session limit
     let totalProcessed = 0;
     let iterationCount = 0;
     const maxIterations = 1000; // Safety limit to prevent infinite loops
