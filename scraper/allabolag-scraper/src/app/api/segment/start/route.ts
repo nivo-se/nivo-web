@@ -155,7 +155,7 @@ async function processSegmentationJob(jobId: string, params: any, localDb: Local
     const maxPages = 3000;
     const maxEmptyPages = 100; // Increased to 100 - Allabolag has many intermittent empty pages after page 1000
     const pagesPerBatch = 20; // Process 20 pages per batch
-    const concurrency = 10; // Reduced to 10 to stay well under 20 concurrent session limit
+    const concurrency = 30; // Increased to 30 for VPN mode (no proxy rate limits)
     
     // Try to get exact count from first page to know when to stop
     let expectedTotalCount: number | null = null;
@@ -200,25 +200,65 @@ async function processSegmentationJob(jobId: string, params: any, localDb: Local
         for (const chunk of chunks) {
           // Process pages concurrently within chunk
           const promises = chunk.map(async (pageNum: number) => {
-            try {
-              console.log(`Fetching page ${pageNum}...`);
-              const response = await fetchSegmentationPage(buildId, {
-                ...params,
-                page: pageNum,
-              }, session);
-              
-              const companies = response?.pageProps?.companies || [];
-              console.log(`Page ${pageNum}: Found ${companies.length} companies`);
-              
-              return { pageNum, companies, isEmpty: companies.length === 0 };
-            } catch (error: any) {
-              console.error(`Error fetching page ${pageNum}:`, error);
-              // Check if it's a proxy error - stop job
-              if (error.message?.includes('Oxylabs proxy') || error.message?.includes('proxy')) {
-                throw new Error(`Proxy error on page ${pageNum}: ${error.message}`);
+            // Retry logic for empty pages - try up to 3 times with fresh session
+            let lastError: string | null = null;
+            for (let retry = 0; retry < 3; retry++) {
+              try {
+                if (retry > 0) {
+                  console.log(`🔄 Retrying page ${pageNum} (attempt ${retry + 1}/3) - refreshing session...`);
+                  // Get fresh session for retry
+                  const freshSession = await getAllabolagSession();
+                  const freshBuildId = await getBuildId(freshSession);
+                  const response = await fetchSegmentationPage(freshBuildId, {
+                    ...params,
+                    page: pageNum,
+                  }, freshSession);
+                  
+                  const companies = response?.pageProps?.companies || [];
+                  if (companies.length > 0) {
+                    console.log(`✅ Page ${pageNum} retry successful: Found ${companies.length} companies`);
+                    return { pageNum, companies, isEmpty: false };
+                  }
+                  // Still empty, try again
+                  console.log(`⚠️  Page ${pageNum} still empty after retry ${retry + 1}`);
+                  await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1))); // Exponential backoff
+                  continue;
+                } else {
+                  // First attempt
+                  console.log(`Fetching page ${pageNum}...`);
+                  const response = await fetchSegmentationPage(buildId, {
+                    ...params,
+                    page: pageNum,
+                  }, session);
+                  
+                  const companies = response?.pageProps?.companies || [];
+                  console.log(`Page ${pageNum}: Found ${companies.length} companies`);
+                  
+                  // If empty, retry once more before marking as empty
+                  if (companies.length === 0 && retry === 0) {
+                    console.log(`⚠️  Page ${pageNum} returned empty - will retry...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    continue; // Retry
+                  }
+                  
+                  return { pageNum, companies, isEmpty: companies.length === 0 };
+                }
+              } catch (error: any) {
+                lastError = error.message;
+                console.error(`Error fetching page ${pageNum} (attempt ${retry + 1}):`, error);
+                // Check if it's a proxy error - stop job
+                if (error.message?.includes('Oxylabs proxy') || error.message?.includes('proxy')) {
+                  throw new Error(`Proxy error on page ${pageNum}: ${error.message}`);
+                }
+                // Wait before retry
+                if (retry < 2) {
+                  await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1)));
+                }
               }
-              return { pageNum, companies: [], isEmpty: true, error: error.message };
             }
+            // All retries failed or page is still empty
+            console.log(`❌ Page ${pageNum} returned empty after 3 attempts`);
+            return { pageNum, companies: [], isEmpty: true, error: lastError || 'Empty page after retries' };
           });
           
           const results = await Promise.all(promises);

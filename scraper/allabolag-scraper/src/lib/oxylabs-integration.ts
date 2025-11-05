@@ -88,6 +88,22 @@ export async function fetchWithOxylabsProxy(
       throw new Error(`Oxylabs proxy rate limit (429). Proxy rotation should have handled this. If this persists, wait and resume job.`);
     }
     
+    // On 500 (Internal Server Error) - retry once, could be transient
+    if (error.message?.includes('500') || error.status === 500) {
+      console.log('🔄 Retrying with Oxylabs proxy after 500 error...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      try {
+        return await fetchWithOxylabs(url, options);
+      } catch (retryError: any) {
+        // If retry also fails with 500, might be rate limit - allow it to pass through
+        if (retryError.message?.includes('429') || retryError.message?.includes('both ports')) {
+          throw retryError; // Let 429 error handling above catch it
+        }
+        throw new Error(`Oxylabs proxy failed after retry: ${retryError.message}. Scraping stopped. Check proxy status and resume job once proxy is working.`);
+      }
+    }
+    
     // On 502 (Bad Gateway) or 525 (No Exit Found) - retry once, then fail
     if (error.message?.includes('502') || error.message?.includes('525') || error.status === 502 || error.status === 525) {
       console.log('🔄 Retrying with Oxylabs proxy after transient error...');

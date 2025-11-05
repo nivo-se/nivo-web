@@ -161,13 +161,13 @@ export class OxylabsProxy {
       // Use node-fetch v2 which properly supports HttpsProxyAgent
       const fetch = (await import('node-fetch')).default;
       
-      // Convert headers to plain object for node-fetch
+      // Convert headers to plain object for node-fetch (define outside try for catch block access)
       const headersObj: Record<string, string> = {};
       headers.forEach((value, key) => {
         headersObj[key] = value;
       });
       
-      // Convert method to uppercase for node-fetch (if provided)
+      // Convert method to uppercase for node-fetch (if provided) (define outside try for catch block access)
       const method = options.method ? options.method.toUpperCase() : 'GET';
       
       // Get current proxy agent (supports rotation)

@@ -4,13 +4,33 @@
  * Integrates ProxyScrape proxy into the scraping request flow
  */
 
-import { initializeProxyScrape, getProxyScrapeProxy, fetchWithProxyScrape, getProxyScrapeStats } from './proxyscrape-proxy';
 import { loadProxyScrapeConfig } from './proxyscrape-config';
+
+// Optional ProxyScrape imports (will only be used if proxyscrape-proxy.ts exists)
+let initializeProxyScrape: any = null;
+let getProxyScrapeProxy: any = null;
+let fetchWithProxyScrape: any = null;
+let getProxyScrapeStats: any = null;
+
+try {
+  const proxyscrapeProxy = require('./proxyscrape-proxy');
+  initializeProxyScrape = proxyscrapeProxy.initializeProxyScrape;
+  getProxyScrapeProxy = proxyscrapeProxy.getProxyScrapeProxy;
+  fetchWithProxyScrape = proxyscrapeProxy.fetchWithProxyScrape;
+  getProxyScrapeStats = proxyscrapeProxy.getProxyScrapeStats;
+} catch (error) {
+  // proxyscrape-proxy.ts not available - that's fine, we'll use Oxylabs
+  console.log('ℹ️  ProxyScrape proxy module not available, will use Oxylabs if enabled');
+}
 
 /**
  * Initialize ProxyScrape proxy at startup
  */
 export async function initProxyScrapeIntegration(): Promise<void> {
+  if (!initializeProxyScrape) {
+    throw new Error('ProxyScrape proxy module not available. proxyscrape-proxy.ts file is missing.');
+  }
+
   const config = loadProxyScrapeConfig();
   
   if (!config) {
@@ -36,6 +56,10 @@ export async function fetchWithProxyScrapeProxy(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  if (!fetchWithProxyScrape || !getProxyScrapeProxy || !initializeProxyScrape) {
+    throw new Error('ProxyScrape proxy module not available. proxyscrape-proxy.ts file is missing.');
+  }
+
   let proxy = getProxyScrapeProxy();
   
   // Auto-initialize if not already initialized
@@ -79,6 +103,9 @@ export async function fetchWithProxyScrapeProxy(
  * Get ProxyScrape statistics for monitoring
  */
 export function getProxyScrapeStatsForMonitoring() {
+  if (!getProxyScrapeStats) {
+    return null;
+  }
   return getProxyScrapeStats();
 }
 
