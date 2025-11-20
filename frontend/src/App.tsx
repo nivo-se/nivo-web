@@ -8,6 +8,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import WorkingDashboard from "./pages/WorkingDashboard";
+import AISourcingDashboard from "./pages/AISourcingDashboard";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 import StyleGuide from "./pages/StyleGuide";
@@ -26,14 +27,22 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/styleguide" element={<StyleGuide />} />
-                  <Route 
-                    path="/dashboard" 
-                    element={
-                      <ProtectedRoute>
-                        <WorkingDashboard />
-                      </ProtectedRoute>
-                    } 
-                  />
+            <Route
+              path="/ai-sourcing"
+              element={
+                <ProtectedRoute>
+                  <AISourcingDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <WorkingDashboard />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/admin"
               element={

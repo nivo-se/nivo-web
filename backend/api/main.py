@@ -51,13 +51,15 @@ async def health_check():
     return {"status": "healthy", "service": "nivo-intelligence-api"}
 
 # Import routers
-from . import filters, jobs, companies, status, ai_reports, shortlists
+from . import filters, jobs, companies, status, ai_reports, shortlists, ai_filter, enrichment
 app.include_router(filters.router)
 app.include_router(jobs.router)
 app.include_router(companies.router)
 app.include_router(status.router)
 app.include_router(ai_reports.router)
 app.include_router(shortlists.router)
+app.include_router(ai_filter.router)
+app.include_router(enrichment.router)
 
 # TODO: Add when implemented
 # from . import search
